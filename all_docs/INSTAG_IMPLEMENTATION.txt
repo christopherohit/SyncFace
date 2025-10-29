@@ -1,0 +1,589 @@
+================================================================================
+                InsTaG-Inspired Implementation for SyncTalk
+              Deformable NeRF with Pre-training and Adaptation
+================================================================================
+
+OVERVIEW
+--------
+This implementation transforms SyncTalk from a person-specific conditional NeRF
+into a deformable NeRF with a pre-training + fast-adaptation workflow inspired
+by InsTaG (Instant Talking-face Generation).
+
+Key improvements:
+- Universal Motion Field (UMF) learned across multiple identities
+- Fast few-shot adaptation to new identities (10-100 frames)
+- Motion-aligned adaptation using MotionAligner network
+- Geometry prior regularization for improved 3D consistency
+- Negative Contrast Loss for better motion disentanglement
+
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+Core Modules (nerf_triplane/):
+├── instag_modules.py          # Core architecture components
+│   ├── UniversalMotionField   # Shared deformation field (UMF)
+│   ├── PersonalizedMotionField # Identity-specific motion refinement
+│   ├── StaticField            # Appearance and geometry network
+│   ├── MotionAligner          # Adapter for frozen UMF
+│   └── FaceMouthHook          # Lip region motion coupling
+│
+├── instag_losses.py           # Loss functions
+│   ├── NegativeContrastLoss   # Pre-training: orthogonality loss
+│   ├── ScaleInvariantDepthLoss # Adaptation: depth supervision
+│   ├── NormalConsistencyLoss  # Adaptation: normal supervision
+│   └── GeometryPriorRegularizer # Combined geometry losses
+│
+└── instag_network.py          # Integrated InsTaG network
+    └── InsTaGNetwork          # Main model class (2 phases)
+
+Training Scripts:
+├── pretrain_umf.py            # Phase 1: Multi-person pre-training
+├── adapt_identity.py          # Phase 2: Few-shot adaptation
+└── preprocess_geometry.py     # Geometry estimation preprocessing
+
+Tests:
+├── tests/test_instag_modules.py    # Unit tests for all modules
+└── tests/test_training_sanity.py   # End-to-end training sanity checks
+
+
+================================================================================
+ARCHITECTURE DETAILS
+================================================================================
+
+1. Universal Motion Field (UMF)
+   - Input: spatial coordinates x, audio features f_l, eye features f_e
+   - Output: displacement vector δx_universal ∈ R³
+   - Capacity: 64 hidden dim, 3 layers, tri-plane hash encoding
+   - Learned during pre-training, frozen during adaptation
+
+2. Personalized Motion Field
+   - Input: same as UMF (x, f_l, f_e)
+   - Output: δx_personal ∈ R³
+   - Capacity: 32 hidden dim, 2 layers (smaller than UMF)
+   - One per identity during pre-training
+   - New one trained during adaptation
+
+3. Static Field
+   - Input: deformed coordinates x' = x + δx, view direction d, individual code c
+   - Output: density σ, color rgb
+   - Architecture: tri-plane hash encoding + density MLP + color MLP
+   - One per identity (new one trained during adaptation)
+
+4. Motion Aligner (adaptation only)
+   - Input: spatial coordinates x
+   - Output: alignment offset Δx_A, scale τ_A
+   - Purpose: Align frozen UMF to new identity
+   - Formula: δx_univ = τ_A * UMF(x + Δx_A, f_l, f_e)
+
+5. Face-Mouth Hook (optional)
+   - Computes lip motion statistics: Δμ_max, Δμ_min, μ_dist
+   - Feeds into inside-mouth branch for consistent animation
+   - Currently implemented but not integrated in main training loop
+
+
+================================================================================
+TRAINING PHASES
+================================================================================
+
+PHASE 1: PRE-TRAINING (Multi-person)
+-------------------------------------
+Goal: Learn universal motion patterns shared across identities
+
+Data: Multiple person video datasets
+     Expected structure: data_root/person1/, data_root/person2/, etc.
+     Each folder contains: transforms_train.json, gt_imgs/, auds, etc.
+
+Modules trained:
+  ✓ Universal Motion Field (UMF)
+  ✓ PersonalizedField for each identity
+  ✓ StaticField for each identity
+  ✓ AudioNet
+
+Loss function:
+  L_pre = L_photo + λ_C * L_NC
+
+  Where:
+    L_photo: Photometric loss (L1 between rendered and GT images)
+    L_NC: Negative Contrast Loss
+         L_NC = Σ_{i,j; i≠j} max(0, <δx_i, δx_j>)
+         Encourages orthogonality between personalized fields
+
+Hyperparameters:
+  - λ_C: 0.001 - 0.05 (default: 0.01)
+  - Learning rate (hash grids): 1e-2
+  - Learning rate (MLPs): 1e-3
+  - Iterations: ~200,000
+
+Command:
+  conda activate synctalk && python pretrain_umf.py \
+      --data_root /path/to/multi_person_data \
+      --workspace workspace_pretrain \
+      --iters 200000 \
+      --lambda_C 0.01
+
+Output:
+  - workspace_pretrain/umf_final.pth (frozen UMF for adaptation)
+
+
+PHASE 2: ADAPTATION (Few-shot)
+-------------------------------
+Goal: Adapt frozen UMF to new identity with 10-100 frames
+
+Data: Single person video dataset
+     Structure: data/target_person/transforms_train.json, gt_imgs/, etc.
+     Optional: depth_estimates/, normal_estimates/ (from preprocessing)
+
+Modules trained:
+  ✓ MotionAligner (key adapter)
+  ✓ New PersonalizedField
+  ✓ New StaticField
+
+Modules frozen:
+  ✗ UMF (loaded from pre-training)
+  ✗ AudioNet (optional: can fine-tune)
+
+Loss function:
+  L_ada = L_photo + L_geo
+
+  Where:
+    L_geo = λ_D * L_D + λ_N * L_N
+    
+    L_D: Scale-invariant depth loss
+         L_D = sqrt(E[(log d_pred - log d_est)²] - α*E[log d_pred - log d_est]²)
+    
+    L_N: Normal consistency loss
+         L_N = Σ_i (1 - <N_pred_i, N_est_i>)
+
+Hyperparameters:
+  - λ_D: 0.05 - 0.2 (default: 0.1)
+  - λ_N: 0.01 - 0.1 (default: 0.05)
+  - α: 0.3 - 0.7 (default: 0.5, higher = more scale-invariant)
+  - Learning rate (hash grids): 2e-2
+  - Learning rate (MLPs): 5e-3
+  - Iterations: ~20,000 (10x fewer than pre-training)
+
+Preprocessing (optional but recommended):
+  conda activate synctalk && python preprocess_geometry.py \
+      --data /path/to/target_person \
+      --method midas \
+      --device cuda:0
+
+Command:
+  conda activate synctalk && python adapt_identity.py \
+      --umf_checkpoint workspace_pretrain/umf_final.pth \
+      --data /path/to/target_person \
+      --workspace workspace_adapt \
+      --iters 20000 \
+      --lambda_D 0.1 \
+      --lambda_N 0.05
+
+Output:
+  - workspace_adapt/best_adapted.pth (best model during training)
+  - workspace_adapt/adapted_final.pth (final model)
+
+
+================================================================================
+IMPLEMENTATION EQUATIONS
+================================================================================
+
+Forward Pass (Rendering):
+--------------------------
+1. Audio/Eye Encoding:
+   f_l, f_e = AudioNet(audio), EyeNet(eye)
+
+2. Deformation Computation:
+   During pre-training:
+     δx_univ = UMF(x, f_l, f_e)
+   
+   During adaptation:
+     Δx_A, τ_A = MotionAligner(x)
+     δx_univ = τ_A ⊙ UMF(x + Δx_A, f_l, f_e)
+   
+   δx_personal = PersonalizedField(x, f_l, f_e)
+   δx = δx_univ + δx_personal
+
+3. Static Field Query:
+   x' = x + δx
+   σ, rgb = StaticField(x', d, c)
+
+4. Volume Rendering:
+   C(r) = Σ_i T_i * (1 - exp(-σ_i δ_i)) * rgb_i
+   Where T_i = exp(-Σ_{j<i} σ_j δ_j)
+
+
+Negative Contrast Loss (Pre-training):
+---------------------------------------
+For identities i, j in batch (i ≠ j):
+  
+  δx_i = PersonalizedField_i(x, f_l, f_e)  # Sample points
+  δx_j = PersonalizedField_j(x, f_l, f_e)
+  
+  δx_i_flat = flatten(δx_i) / ||flatten(δx_i)||
+  δx_j_flat = flatten(δx_j) / ||flatten(δx_j)||
+  
+  L_C(i,j) = max(0, <δx_i_flat, δx_j_flat>)
+  
+  L_NC = (1/|pairs|) * Σ_{i,j; i≠j} L_C(i,j)
+
+
+Geometry Prior Loss (Adaptation):
+----------------------------------
+Depth loss (scale-invariant):
+  Δ_log = log(d_pred) - log(d_est)
+  L_D = sqrt(E[Δ_log²] - α * E[Δ_log]²)
+
+Normal loss (cosine distance):
+  L_N = (1/N) * Σ_i (1 - <N_pred_i, N_est_i>)
+
+Combined:
+  L_geo = λ_D * L_D + λ_N * L_N
+
+
+================================================================================
+DATA FORMATS
+================================================================================
+
+Multi-person Pre-training Dataset:
+-----------------------------------
+data_root/
+├── person1/
+│   ├── transforms_train.json    # Camera poses, intrinsics
+│   ├── transforms_val.json
+│   ├── gt_imgs/                 # Ground truth images
+│   │   ├── 0.jpg
+│   │   ├── 1.jpg
+│   │   └── ...
+│   ├── aud.wav                  # Audio file
+│   ├── aud.npy                  # Preprocessed audio features
+│   └── ...
+├── person2/
+│   └── (same structure)
+└── person3/
+    └── (same structure)
+
+
+Single-person Adaptation Dataset:
+----------------------------------
+target_person/
+├── transforms_train.json        # Camera poses
+├── gt_imgs/                     # 10-100 frames (few-shot)
+│   ├── 0.jpg
+│   └── ...
+├── aud.wav
+├── aud.npy
+├── depth_estimates/             # Optional (from preprocess_geometry.py)
+│   ├── 0.npy                    # [H, W] float32 depth maps
+│   └── ...
+└── normal_estimates/            # Optional
+    ├── 0.npy                    # [H, W, 3] float32 normal maps
+    └── ...
+
+
+Geometry Estimates Format:
+---------------------------
+depth_estimates/*.npy:
+  - Shape: [H, W]
+  - Type: float32
+  - Values: Normalized depth (larger = closer for MiDaS)
+  - Produced by: preprocess_geometry.py or external monocular estimator
+
+normal_estimates/*.npy:
+  - Shape: [H, W, 3]
+  - Type: float32
+  - Values: Normalized surface normals (unit vectors)
+  - Computed from depth or predicted directly
+
+
+================================================================================
+TESTING
+================================================================================
+
+Unit Tests:
+-----------
+Run all module tests:
+  python tests/test_instag_modules.py
+
+Tests included:
+  ✓ UniversalMotionField: initialization, forward, shapes
+  ✓ PersonalizedMotionField: forward, parameter count
+  ✓ StaticField: density/color prediction, bounds checking
+  ✓ MotionAligner: offset and scale output
+  ✓ FaceMouthHook: lip mask creation, feature computation
+  ✓ Loss functions: NCLoss, depth loss, normal loss, geometry prior
+  ✓ Integration: full deformation and rendering pipeline
+
+
+Sanity Checks:
+--------------
+Run training sanity checks with synthetic data:
+  python tests/test_training_sanity.py
+
+Tests included:
+  ✓ Pre-training step with 3 identities
+  ✓ Adaptation step with frozen UMF
+  ✓ Checkpoint save/load
+  ✓ Motion Aligner functionality
+  ✓ Gradient flow verification
+
+
+================================================================================
+HYPERPARAMETER TUNING GUIDE
+================================================================================
+
+Pre-training λ_C (NCLoss weight):
+----------------------------------
+Too low (< 0.001):  Personalized fields may become too similar to UMF
+Too high (> 0.05):  Training instability, personalized fields suppressed
+Sweet spot: 0.01
+
+Recommended tuning:
+  1. Start with 0.01
+  2. If personalized fields collapse → increase to 0.02-0.03
+  3. If training unstable → decrease to 0.005-0.008
+
+
+Adaptation λ_D (Depth loss):
+----------------------------
+Too low (< 0.05):   Weak geometry supervision, may drift
+Too high (> 0.3):   Over-constrains model, poor photometric quality
+Sweet spot: 0.1
+
+Depends on:
+  - Depth quality: Higher weight if depth is accurate
+  - Data amount: Lower weight if very few frames
+
+
+Adaptation λ_N (Normal loss):
+-----------------------------
+Typically 2-5x smaller than λ_D
+Range: 0.01 - 0.1
+Default: 0.05
+
+Can be set to 0 if normals unavailable or low quality
+
+
+Adaptation Learning Rates:
+--------------------------
+Hash grids (StaticField): 1e-2 to 5e-2
+  - Higher for very few frames (few-shot)
+  - Lower for more stable training
+
+MLPs (MotionAligner, PersonalizedField): 1e-3 to 1e-2
+  - Keep lower than hash grid LR
+
+
+Adaptation Iterations:
+----------------------
+10 frames:  10,000 - 15,000 iterations
+50 frames:  15,000 - 25,000 iterations
+100 frames: 20,000 - 30,000 iterations
+
+Rule of thumb: ~200-500 iterations per frame
+
+
+================================================================================
+COMPUTE REQUIREMENTS
+================================================================================
+
+Pre-training:
+-------------
+GPU: 1x NVIDIA RTX 3090 or better (24GB VRAM)
+Time: ~12-24 hours for 200K iterations with 5 identities
+Memory: ~20GB VRAM during training
+
+Optimization tips:
+  - Reduce num_rays if OOM (default: 4096*16)
+  - Use fp16 mixed precision (--fp16)
+  - Process identities in smaller batches
+
+
+Adaptation:
+-----------
+GPU: 1x NVIDIA RTX 3080 or better (10GB+ VRAM)
+Time: ~1-3 hours for 20K iterations
+Memory: ~10GB VRAM
+
+Much faster than pre-training:
+  - 10x fewer iterations
+  - Single identity
+  - Can use smaller batch sizes for few-shot
+
+
+Geometry Preprocessing:
+-----------------------
+GPU: Any CUDA-capable GPU
+Time: ~30 seconds per 100 frames (MiDaS DPT_Large)
+Memory: ~4GB VRAM
+
+One-time cost per identity
+
+
+================================================================================
+FAILURE MODES AND FALLBACKS
+================================================================================
+
+1. Monocular Geometry Estimator Not Available
+   Symptom: preprocess_geometry.py fails to load MiDaS
+   
+   Solutions:
+     a) Install dependencies: pip install timm opencv-python
+     b) Skip geometry prior: adapt_identity.py --use_geometry_prior False
+     c) Use pre-computed estimates from external service
+   
+   Impact: Reduced 3D consistency, may have depth artifacts
+
+
+2. Insufficient Pre-training Data
+   Symptom: UMF fails to generalize to new identities
+   
+   Solutions:
+     a) Add more identities (minimum 3-5 recommended)
+     b) Increase pre-training iterations
+     c) Reduce λ_C to allow more personalized variation
+   
+   Impact: Slower adaptation, may need more target frames
+
+
+3. Poor Geometry Estimates
+   Symptom: Geometry loss dominates, bad photometric quality
+   
+   Solutions:
+     a) Reduce λ_D and λ_N (e.g., 0.05, 0.01)
+     b) Use more robust depth estimator (ZoeDepth instead of MiDaS)
+     c) Disable geometry prior if estimates are very noisy
+   
+   Impact: Loss of geometric regularization
+
+
+4. Adaptation Overfitting (Very Few Frames)
+   Symptom: Perfect training loss but poor generalization
+   
+   Solutions:
+     a) Reduce iteration count
+     b) Increase regularization (geometry prior weights)
+     c) Use data augmentation (not yet implemented)
+   
+   Impact: Poor rendering quality on unseen poses/expressions
+
+
+5. Face-Mouth Hook Not Integrated
+   Symptom: Face-Mouth Hook implemented but not used in main loop
+   
+   Status: Module implemented and tested, integration optional
+   
+   To integrate:
+     a) Set opt.use_fm_hook = True
+     b) Modify forward pass to compute hook features
+     c) Pass features to mouth branch
+   
+   Current: Placeholder for future enhancement
+
+
+================================================================================
+KNOWN LIMITATIONS
+================================================================================
+
+1. Torso rendering not yet integrated with InsTaG modules
+   - Original SyncTalk torso deformation preserved
+   - Could be extended to use UMF in future
+
+2. Face-Mouth Hook not integrated in main training loop
+   - Module implemented and tested
+   - Requires branch separation in forward pass
+
+3. Camera pose optimization not tested with new architecture
+   - Should work (inherited from SyncTalk)
+   - Recommend freezing during adaptation
+
+4. No temporal consistency loss
+   - Could add temporal smoothness term
+   - Current: frame-independent rendering
+
+5. AudioNet not fine-tuned during adaptation
+   - Currently frozen for stability
+   - Could optionally fine-tune with small LR
+
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+Potential improvements:
+
+1. Temporal Consistency:
+   - Add optical flow loss
+   - Temporal smoothness on deformations
+
+2. FM Hook Integration:
+   - Separate face/mouth branches
+   - Apply hook coupling in forward pass
+
+3. Multi-resolution Training:
+   - Progressive training from coarse to fine
+   - Adaptive ray sampling
+
+4. Few-shot Augmentation:
+   - Expression interpolation
+   - Pose augmentation
+
+5. Real-time Rendering:
+   - Optimize inference speed
+   - Bake static components
+
+6. Multi-identity Interpolation:
+   - Blend UMF outputs from multiple identities
+   - Identity morphing
+
+
+================================================================================
+CITATION AND REFERENCES
+================================================================================
+
+This implementation is inspired by:
+- InsTaG: Instant Talking-face Generation (Liu et al.)
+- SyncTalk: The Devil is in the Synchronization (He et al.)
+- Instant-NGP (Müller et al.)
+- MiDaS: Towards Robust Monocular Depth Estimation (Ranftl et al.)
+
+For questions or issues, refer to:
+- Code: nerf_triplane/instag_*.py
+- Tests: tests/test_*.py
+- This document: INSTAG_IMPLEMENTATION.txt
+
+
+================================================================================
+QUICK REFERENCE COMMANDS
+================================================================================
+
+# 1. Preprocess geometry (optional but recommended)
+conda activate synctalk && python preprocess_geometry.py \
+    --data /path/to/target_person \
+    --method midas
+
+# 2. Pre-train UMF (Phase 1)
+conda activate synctalk && python pretrain_umf.py \
+    --data_root /path/to/multi_person_data \
+    --workspace workspace_pretrain \
+    --iters 200000 \
+    --lambda_C 0.01
+
+# 3. Adapt to new identity (Phase 2)
+conda activate synctalk && python adapt_identity.py \
+    --umf_checkpoint workspace_pretrain/umf_final.pth \
+    --data /path/to/target_person \
+    --workspace workspace_adapt \
+    --iters 20000 \
+    --lambda_D 0.1 \
+    --lambda_N 0.05
+
+# 4. Run tests
+python tests/test_instag_modules.py      # Unit tests
+python tests/test_training_sanity.py     # Sanity checks
+
+
+================================================================================
+END OF IMPLEMENTATION DOCUMENT
+================================================================================
+

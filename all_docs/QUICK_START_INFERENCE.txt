@@ -1,0 +1,212 @@
+================================================================================
+                    InsTaG-SyncTalk Quick Start Guide
+                          INFERENCE COMMANDS
+================================================================================
+
+This guide shows you how to generate talking face videos with your trained model.
+
+================================================================================
+PREREQUISITE: You need a trained model
+================================================================================
+
+You must complete ONE of these first:
+
+Option A: Full InsTaG Pipeline (Recommended if you have multiple people)
+  1. Run pre-training: python pretrain_umf.py (Phase 1)
+  2. Run adaptation: python adapt_identity.py (Phase 2)
+  → Gives you: workspace_adapt_may/adapted_final.pth
+
+Option B: Single-Person Training (Faster for testing with one person)
+  1. Run: python main.py data/May --workspace workspace_may --iters 50000
+  → Gives you: workspace_may/checkpoints/ngp_ep*.pth
+
+
+================================================================================
+INFERENCE: Generate Video from Audio
+================================================================================
+
+METHOD 1: InsTaG Inference (After Phase 2 Adaptation)
+----------------------------------------------------------------------
+
+conda activate synctalk
+
+python infer_instag.py \
+    --checkpoint workspace_adapt_may/adapted_final.pth \
+    --audio demo/test.wav \
+    --output output_video.mp4 \
+    --reference_data data/May \
+    --fps 25 \
+    --W 450 \
+    --H 450
+
+
+METHOD 2: Original SyncTalk Inference (Single-person training)
+----------------------------------------------------------------------
+
+conda activate synctalk
+
+python main.py data/May \
+    --workspace workspace_may \
+    --test \
+    --aud demo/test.wav \
+    --O
+
+
+================================================================================
+QUICK TEST: Generate a video right now (Single-person)
+================================================================================
+
+If you just want to test quickly with May:
+
+# Step 1: Train (takes ~2-4 hours)
+conda activate synctalk
+python main.py data/May \
+    --workspace workspace_test \
+    --iters 50000 \
+    --O
+
+# Step 2: Inference
+python main.py data/May \
+    --workspace workspace_test \
+    --test \
+    --aud demo/test.wav \
+    --O
+
+# Output will be in: workspace_test/results/
+
+
+================================================================================
+FULL INSTAG PIPELINE (If you have 3+ people)
+================================================================================
+
+# Step 1: Preprocess geometry (optional, ~30 sec per person)
+python preprocess_geometry.py --data data/May --method midas
+python preprocess_geometry.py --data data/Person2 --method midas
+python preprocess_geometry.py --data data/Person3 --method midas
+
+# Step 2: Pre-train UMF (~12-24 hours, do this ONCE)
+python pretrain_umf.py \
+    --data_root data \
+    --workspace workspace_pretrain \
+    --iters 200000 \
+    --lambda_C 0.01
+
+# Step 3: Adapt to May (~1-3 hours per person)
+python adapt_identity.py \
+    --umf_checkpoint workspace_pretrain/umf_final.pth \
+    --data data/May \
+    --workspace workspace_adapt_may \
+    --iters 20000 \
+    --lambda_D 0.1 \
+    --lambda_N 0.05
+
+# Step 4: Generate video
+python infer_instag.py \
+    --checkpoint workspace_adapt_may/adapted_final.pth \
+    --audio demo/test.wav \
+    --output output_may.mp4 \
+    --reference_data data/May
+
+
+================================================================================
+AUTOMATED PIPELINE (Run everything)
+================================================================================
+
+Make the script executable and run:
+
+chmod +x run_full_pipeline.sh
+./run_full_pipeline.sh
+
+This will guide you through all steps interactively.
+
+
+================================================================================
+COMMON ISSUES & SOLUTIONS
+================================================================================
+
+Issue: "Audio file not found"
+Solution: Make sure demo/test.wav exists or provide a different audio file
+
+Issue: "Checkpoint not found"
+Solution: Train the model first (see PREREQUISITE section above)
+
+Issue: "CUDA out of memory"
+Solution: 
+  - Reduce --W and --H (e.g., --W 256 --H 256)
+  - Reduce --num_rays in training
+  - Use smaller --iters for testing
+
+Issue: "No gt_imgs/ directory"
+Solution: Extract frames from video first:
+  ffmpeg -i data/May/May.mp4 -qscale:v 1 -qmin 1 -qmax 1 -vsync 0 \
+      data/May/gt_imgs/%d.jpg
+
+Issue: "Module not found"
+Solution: Make sure conda environment is activated:
+  conda activate synctalk
+
+
+================================================================================
+PARAMETERS EXPLAINED
+================================================================================
+
+Inference Parameters:
+  --checkpoint    Path to trained model (.pth file)
+  --audio         Input audio file (.wav)
+  --output        Output video path (.mp4)
+  --reference_data Directory with camera/geometry info
+  --fps           Video frame rate (default: 25)
+  --W, --H        Video resolution (default: 450x450)
+
+Training Parameters:
+  --iters         Training iterations (50000 = quick test, 200000 = full)
+  --lambda_C      NCLoss weight for pre-training (default: 0.01)
+  --lambda_D      Depth loss weight for adaptation (default: 0.1)
+  --lambda_N      Normal loss weight for adaptation (default: 0.05)
+
+
+================================================================================
+EXPECTED OUTPUTS
+================================================================================
+
+After Training:
+  workspace_adapt_may/adapted_final.pth         (~300MB)
+  workspace_adapt_may/best_adapted.pth          (best checkpoint)
+  workspace_pretrain/umf_final.pth              (~200MB, UMF only)
+
+After Inference:
+  output_video.mp4                               (your generated video!)
+  outputs/output_may.mp4                         (if using pipeline script)
+
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. For best results with InsTaG:
+   - Collect videos from 5+ different people
+   - Run full pre-training once
+   - Adapt quickly to any new person
+
+2. For quick testing:
+   - Use single-person training with May
+   - Skip pre-training phase
+   - Use original SyncTalk inference
+
+3. Check the tests:
+   python tests/test_training_sanity.py  # Verify everything works
+
+
+================================================================================
+NEED HELP?
+================================================================================
+
+Check these files for more details:
+  - INSTAG_IMPLEMENTATION.txt (in all_docs/)
+  - IMPLEMENTATION_SUMMARY.md (in all_docs/)
+  - pretrain_umf.py --help
+  - adapt_identity.py --help
+  - infer_instag.py --help
+
+================================================================================
+

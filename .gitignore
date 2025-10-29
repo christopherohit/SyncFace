@@ -40,7 +40,6 @@
 InsTaG/
 
 
-*.txt
 *.csv
 *.json
 *.yaml

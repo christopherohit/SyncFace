@@ -1,0 +1,50 @@
+
+BFM PARAMETER MODIFICATION GUIDE
+=================================
+
+This guide shows how to modify Basel Face Model (BFM) parameters to understand their effects.
+
+PARAMETERS:
+-----------
+
+1. Expression (exp) - 79 coefficients, range: -2.0 to +2.0
+   - Controls facial muscles and expressions
+   - exp[0]: Often mouth opening/smile
+   - exp[1]: Often sadness/frown
+   - exp[2]: Often surprise/eyebrow raise
+
+2. Euler Angles (euler) - 3 values in radians, range: -π/2 to +π/2
+   - euler[0]: Pitch (up/down head tilt)
+   - euler[1]: Yaw (left/right head rotation)
+   - euler[2]: Roll (side-to-side head tilt)
+
+3. Translation (trans) - 3 values in world units
+   - trans[0]: X position (left/right)
+   - trans[1]: Y position (up/down)
+   - trans[2]: Z position (distance, negative = farther)
+
+4. Focal Length (focal) - 1 value, range: ~500-2000
+   - Controls camera perspective
+   - Lower = wide angle (more distortion)
+   - Higher = telephoto (less distortion)
+
+MODIFICATION EXAMPLES:
+---------------------
+
+Happy Face: exp=0:1.0
+Sad Face: exp=1:-1.0
+Surprised: exp=2:1.2,0:0.5
+Turn Right: euler=0,0.5,0
+Look Up: euler=0.3,0,0
+Move Closer: trans=0,0,-500
+Wide Angle: focal=700
+Telephoto: focal=1300
+
+COMBINED EFFECTS:
+----------------
+
+Happy + Turned: exp=0:1.0;euler=0,0.3,0
+Surprised + Close: exp=2:1.0,0:0.5;trans=0,0,-400
+Sad + Down: exp=1:-0.8;euler=-0.2,0,0
+
+The effects are additive and can be combined for complex expressions.
