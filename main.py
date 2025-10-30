@@ -93,6 +93,16 @@ if __name__ == '__main__':
     parser.add_argument('--ind_num', type=int, default=20000, help="number of individual codes, should be larger than training dataset size")
 
     parser.add_argument('--ind_dim_torso', type=int, default=8, help="individual code dim, 0 to turn off")
+    
+    ### Enhanced Audio Encoder options
+    parser.add_argument('--use_enhanced_encoder', action='store_true', help="use enhanced audio encoder with foundation models (Whisper/SpeechT5/EnCodec)")
+    parser.add_argument('--enhanced_encoder_type', type=str, default='whisper', choices=['whisper', 'speecht5', 'encodec', 'ensemble', 'hybrid'], help="type of enhanced encoder")
+    parser.add_argument('--use_prosody', action='store_true', help="extract and use prosodic features (pitch, energy, rhythm)")
+    parser.add_argument('--use_contrastive', action='store_true', help="use CLIP-like contrastive audio-video alignment")
+    parser.add_argument('--freeze_audio_backbone', action='store_true', help="freeze pretrained foundation model weights")
+    parser.add_argument('--foundation_model_type', type=str, default='whisper', help="foundation model type for hybrid mode")
+    parser.add_argument('--contrastive_temperature', type=float, default=0.07, help="temperature for contrastive learning")
+    parser.add_argument('--whisper_model', type=str, default='openai/whisper-small', help="Whisper model name")
 
     parser.add_argument('--amb_dim', type=int, default=2, help="ambient dimension")
     parser.add_argument('--part', action='store_true', help="use partial training data (1/10)")

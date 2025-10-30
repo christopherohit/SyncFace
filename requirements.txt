@@ -29,3 +29,15 @@ onnxruntime-gpu
 librosa
 fvcore
 iopath
+
+# Enhanced Audio Encoder Dependencies
+# Foundation models for improved prosodic understanding
+accelerate>=0.20.0  # For efficient model loading
+torchcrepe>=0.0.15  # For pitch extraction (optional)
+praat-parselmouth>=0.4.3  # For prosody analysis (optional)
+
+# Note: The following models are supported via transformers (already installed):
+# - Whisper (openai/whisper-*): Rich prosodic and semantic understanding
+# - SpeechT5 (microsoft/speecht5_*): Speech representation learning
+# - EnCodec (facebook/encodec_*): High-quality audio compression features
+# No additional packages needed if transformers>=4.36.0 is installed
