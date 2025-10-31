@@ -2,7 +2,7 @@
 Audio Encoder Adapter Module
 
 This module provides adapter classes to integrate enhanced foundation model encoders
-(Whisper, SpeechT5, EnCodec) with the existing SyncTalk architecture while maintaining
+(Whisper, SpeechT5, EnCodec) with the existing SyncFace architecture while maintaining
 backward compatibility with the original AudioEncoder (LRS2-based).
 """
 
@@ -78,7 +78,7 @@ class MelSpectrogramExtractor(nn.Module):
 
 class AudioEncoderAdapter(nn.Module):
     """
-    Adapter to make enhanced audio encoders compatible with SyncTalk's
+    Adapter to make enhanced audio encoders compatible with SyncFace's
     AudioNet interface. This allows seamless integration with the existing
     NeRFNetwork architecture.
     

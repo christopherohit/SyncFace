@@ -1,278 +1,575 @@
+"""
+SyncFace - Enhanced Audio-Driven Talking Head Generation
+
+Main training and inference script with enhanced audio encoders and emotion support.
+
+Usage:
+    # Train
+    python main.py data/Macron --workspace output/Macron_hybrid --use_enhanced_encoder --iters 100000 -O
+
+    # Test
+    python main.py data/Macron --workspace output/Macron_hybrid --test -O
+
+    # GUI
+    python main.py data/Macron --workspace output/Macron_hybrid --test --gui -O
+"""
+
 import argparse
+import os
+import torch
+import numpy as np
 
 from nerf_triplane.provider import NeRFDataset
 from nerf_triplane.utils import *
 from nerf_triplane.network import NeRFNetwork
 
-# torch.autograd.set_detect_anomaly(True)
-# Close tf32 features. Fix low numerical accuracy on rtx30xx gpu.
+# ==============================================================================
+# CONFIGURATION SETUP
+# ==============================================================================
+
+def setup_torch_precision():
+    """Configure PyTorch numerical precision settings."""
+    # torch.autograd.set_detect_anomaly(True)  # Enable for debugging NaN gradients
+
+    # Disable tf32 for better numerical accuracy on RTX30xx GPUs
 try:
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-except AttributeError as e:
-    print('Info. This pytorch version is not support with tf32.')
-    
-if __name__ == '__main__':
+    except AttributeError:
+        print('[INFO] This PyTorch version does not support tf32 settings.')
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path', type=str)
-    parser.add_argument('-O', action='store_true', help="equals --fp16 --cuda_ray --exp_eye")
-    parser.add_argument('--test', action='store_true', help="test mode (load model and test dataset)")
-    parser.add_argument('--test_train', action='store_true', help="test mode (load model and train dataset)")
-    parser.add_argument('--data_range', type=int, nargs='*', default=[0, -1], help="data range to use")
-    parser.add_argument('--workspace', type=str, default='workspace')
-    parser.add_argument('--seed', type=int, default=0)
 
-    ### training options
-    parser.add_argument('--iters', type=int, default=200000, help="training iters")
-    parser.add_argument('--lr', type=float, default=1e-2, help="initial learning rate")
-    parser.add_argument('--lr_net', type=float, default=1e-3, help="initial learning rate")
-    parser.add_argument('--ckpt', type=str, default='latest')
-    parser.add_argument('--num_rays', type=int, default=4096 * 16, help="num rays sampled per image for each training step")
-    parser.add_argument('--cuda_ray', action='store_true', help="use CUDA raymarching instead of pytorch")
-    parser.add_argument('--max_steps', type=int, default=16, help="max num steps sampled per ray (only valid when using --cuda_ray)")
-    parser.add_argument('--num_steps', type=int, default=16, help="num steps sampled per ray (only valid when NOT using --cuda_ray)")
-    parser.add_argument('--upsample_steps', type=int, default=0, help="num steps up-sampled per ray (only valid when NOT using --cuda_ray)")
-    parser.add_argument('--update_extra_interval', type=int, default=16, help="iter interval to update extra status (only valid when using --cuda_ray)")
-    parser.add_argument('--max_ray_batch', type=int, default=4096, help="batch size of rays at inference to avoid OOM (only valid when NOT using --cuda_ray)")
+def create_argument_parser():
+    """Create and configure the argument parser."""
+    parser = argparse.ArgumentParser(description='SyncFace - Enhanced Talking Head Generation')
 
-    ### loss set
-    parser.add_argument('--warmup_step', type=int, default=10000, help="warm up steps")
-    parser.add_argument('--amb_aud_loss', type=int, default=1, help="use ambient aud loss")
-    parser.add_argument('--amb_eye_loss', type=int, default=1, help="use ambient eye loss")
-    parser.add_argument('--unc_loss', type=int, default=1, help="use uncertainty loss")
-    parser.add_argument('--lambda_amb', type=float, default=1e-4, help="lambda for ambient loss")
-    parser.add_argument('--pyramid_loss', type=int, default=0, help="use perceptual loss")
+    # ==========================================================================
+    # BASIC ARGUMENTS
+    # ==========================================================================
+    parser.add_argument('path', type=str, help='Path to dataset directory')
+    parser.add_argument('-O', action='store_true',
+                       help='Optimization preset: equals --fp16 --cuda_ray --exp_eye')
+    parser.add_argument('--test', action='store_true',
+                       help='Test mode: load model and run inference')
+    parser.add_argument('--test_train', action='store_true',
+                       help='Test mode: load model and test on training dataset')
+    parser.add_argument('--data_range', type=int, nargs='*', default=[0, -1],
+                       help='Data range to use [start, end]')
+    parser.add_argument('--workspace', type=str, default='workspace',
+                       help='Output workspace directory')
+    parser.add_argument('--seed', type=int, default=0,
+                       help='Random seed for reproducibility')
 
-    ### network backbone options
-    parser.add_argument('--fp16', action='store_true', help="use amp mixed precision training")
+    # ==========================================================================
+    # TRAINING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--iters', type=int, default=200000,
+                       help='Total number of training iterations')
+    parser.add_argument('--lr', type=float, default=1e-2,
+                       help='Initial learning rate for geometry')
+    parser.add_argument('--lr_net', type=float, default=1e-3,
+                       help='Initial learning rate for network parameters')
+    parser.add_argument('--ckpt', type=str, default='latest',
+                       help='Checkpoint to load (latest, best, or specific file)')
+    parser.add_argument('--num_rays', type=int, default=4096 * 16,
+                       help='Number of rays sampled per training step')
+    parser.add_argument('--cuda_ray', action='store_true',
+                       help='Use CUDA raymarching instead of PyTorch')
+    parser.add_argument('--max_steps', type=int, default=16,
+                       help='Max steps sampled per ray (CUDA raymarching only)')
+    parser.add_argument('--num_steps', type=int, default=16,
+                       help='Number of steps sampled per ray (PyTorch raymarching only)')
+    parser.add_argument('--upsample_steps', type=int, default=0,
+                       help='Upsampling steps per ray (PyTorch raymarching only)')
+    parser.add_argument('--update_extra_interval', type=int, default=16,
+                       help='Iteration interval for updating extra status (CUDA only)')
+    parser.add_argument('--max_ray_batch', type=int, default=4096,
+                       help='Batch size of rays at inference (PyTorch only)')
 
-    parser.add_argument('--bg_img', type=str, default='', help="background image")
-    parser.add_argument('--fbg', action='store_true', help="frame-wise bg")
-    parser.add_argument('--exp_eye', action='store_true', help="explicitly control the eyes")
-    parser.add_argument('--fix_eye', type=float, default=-1, help="fixed eye area, negative to disable, set to 0-0.3 for a reasonable eye")
-    parser.add_argument('--smooth_eye', action='store_true', help="smooth the eye area sequence")
-    parser.add_argument('--bs_area', type=str, default="upper", help="upper or eye")
-    parser.add_argument('--au45', action='store_true', help="use openface au45")
-    parser.add_argument('--torso_shrink', type=float, default=0.8, help="shrink bg coords to allow more flexibility in deform")
+    # ==========================================================================
+    # LOSS OPTIONS
+    # ==========================================================================
+    parser.add_argument('--warmup_step', type=int, default=10000,
+                       help='Number of warmup steps before applying full loss')
+    parser.add_argument('--amb_aud_loss', type=int, default=1,
+                       help='Use ambient audio loss (0=off, 1=on)')
+    parser.add_argument('--amb_eye_loss', type=int, default=1,
+                       help='Use ambient eye loss (0=off, 1=on)')
+    parser.add_argument('--unc_loss', type=int, default=1,
+                       help='Use uncertainty loss (0=off, 1=on)')
+    parser.add_argument('--lambda_amb', type=float, default=1e-4,
+                       help='Weight for ambient loss')
+    parser.add_argument('--pyramid_loss', type=int, default=0,
+                       help='Use perceptual pyramid loss (0=off, >0=on)')
 
-    ### dataset options
-    parser.add_argument('--color_space', type=str, default='srgb', help="Color space, supports (linear, srgb)")
-    parser.add_argument('--preload', type=int, default=0, help="0 means load data from disk on-the-fly, 1 means preload to CPU, 2 means GPU.")
-    # (the default value is for the fox dataset)
-    parser.add_argument('--bound', type=float, default=1, help="assume the scene is bounded in box[-bound, bound]^3, if > 1, will invoke adaptive ray marching.")
-    parser.add_argument('--scale', type=float, default=4, help="scale camera location into box[-bound, bound]^3")
-    parser.add_argument('--offset', type=float, nargs='*', default=[0, 0, 0], help="offset of camera location")
-    parser.add_argument('--dt_gamma', type=float, default=1/256, help="dt_gamma (>=0) for adaptive ray marching. set to 0 to disable, >0 to accelerate rendering (but usually with worse quality)")
-    parser.add_argument('--min_near', type=float, default=0.05, help="minimum near distance for camera")
-    parser.add_argument('--density_thresh', type=float, default=10, help="threshold for density grid to be occupied (sigma)")
-    parser.add_argument('--density_thresh_torso', type=float, default=0.01, help="threshold for density grid to be occupied (alpha)")
-    parser.add_argument('--patch_size', type=int, default=1, help="[experimental] render patches in training, so as to apply LPIPS loss. 1 means disabled, use [64, 32, 16] to enable")
+    # ==========================================================================
+    # NETWORK BACKBONE OPTIONS
+    # ==========================================================================
+    parser.add_argument('--fp16', action='store_true',
+                       help='Use mixed precision training (FP16)')
 
-    parser.add_argument('--init_lips', action='store_true', help="init lips region")
-    parser.add_argument('--finetune_lips', action='store_true', help="use LPIPS and landmarks to fine tune lips region")
-    parser.add_argument('--smooth_lips', action='store_true', help="smooth the enc_a in a exponential decay way...")
+    # ==========================================================================
+    # FACE MODELING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--bg_img', type=str, default='',
+                       help='Background image path')
+    parser.add_argument('--fbg', action='store_true',
+                       help='Use frame-wise background')
+    parser.add_argument('--exp_eye', action='store_true',
+                       help='Explicitly control eye movements')
+    parser.add_argument('--fix_eye', type=float, default=-1,
+                       help='Fixed eye area (-1 to disable, 0-0.3 for reasonable eye)')
+    parser.add_argument('--smooth_eye', action='store_true',
+                       help='Smooth eye area sequence')
+    parser.add_argument('--bs_area', type=str, default="upper",
+                       help='Blendshape area to use (upper or eye)')
+    parser.add_argument('--au45', action='store_true',
+                       help='Use OpenFace AU45 blendshapes')
+    parser.add_argument('--torso_shrink', type=float, default=0.8,
+                       help='Shrink torso coordinates for deformation flexibility')
 
-    parser.add_argument('--torso', action='store_true', help="fix head and train torso")
-    parser.add_argument('--head_ckpt', type=str, default='', help="head model")
+    # ==========================================================================
+    # DATASET OPTIONS
+    # ==========================================================================
+    parser.add_argument('--color_space', type=str, default='srgb',
+                       help='Color space (linear, srgb)')
+    parser.add_argument('--preload', type=int, default=0,
+                       help='Data loading mode: 0=on-demand, 1=CPU preload, 2=GPU preload')
+    parser.add_argument('--bound', type=float, default=1,
+                       help='Scene bound for box [-bound, bound]^3')
+    parser.add_argument('--scale', type=float, default=4,
+                       help='Camera location scale into bound box')
+    parser.add_argument('--offset', type=float, nargs='*', default=[0, 0, 0],
+                       help='Camera location offset [x, y, z]')
+    parser.add_argument('--dt_gamma', type=float, default=1/256,
+                       help='Adaptive ray marching gamma (0=disable, >0=accelerate)')
+    parser.add_argument('--min_near', type=float, default=0.05,
+                       help='Minimum camera near distance')
+    parser.add_argument('--density_thresh', type=float, default=10,
+                       help='Density threshold for occupied grid cells')
+    parser.add_argument('--density_thresh_torso', type=float, default=0.01,
+                       help='Density threshold for torso occupied grid cells')
+    parser.add_argument('--patch_size', type=int, default=1,
+                       help='Patch size for LPIPS loss (1=disabled)')
 
-    ### GUI options
-    parser.add_argument('--gui', action='store_true', help="start a GUI")
-    parser.add_argument('--W', type=int, default=450, help="GUI width")
-    parser.add_argument('--H', type=int, default=450, help="GUI height")
-    parser.add_argument('--radius', type=float, default=3.35, help="default GUI camera radius from center")
-    parser.add_argument('--fovy', type=float, default=21.24, help="default GUI camera fovy")
-    parser.add_argument('--max_spp', type=int, default=1, help="GUI rendering max sample per pixel")
+    # ==========================================================================
+    # LIP MODELING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--init_lips', action='store_true',
+                       help='Initialize lip region')
+    parser.add_argument('--finetune_lips', action='store_true',
+                       help='Fine-tune lips using LPIPS and landmarks')
+    parser.add_argument('--smooth_lips', action='store_true',
+                       help='Smooth audio features with exponential decay')
 
-    ### else
-    parser.add_argument('--att', type=int, default=2, help="audio attention mode (0 = turn off, 1 = left-direction, 2 = bi-direction)")
-    parser.add_argument('--aud', type=str, default='', help="audio source (empty will load the default, else should be a path to a npy file)")
-    parser.add_argument('--emb', action='store_true', help="use audio class + embedding instead of logits")
-    parser.add_argument('--portrait', action='store_true', help="only render face")
-    parser.add_argument('--ind_dim', type=int, default=4, help="individual code dim, 0 to turn off")
-    parser.add_argument('--ind_num', type=int, default=20000, help="number of individual codes, should be larger than training dataset size")
+    # ==========================================================================
+    # TORSO MODELING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--torso', action='store_true',
+                       help='Train torso (fix head and train torso)')
+    parser.add_argument('--head_ckpt', type=str, default='',
+                       help='Head model checkpoint path')
 
-    parser.add_argument('--ind_dim_torso', type=int, default=8, help="individual code dim, 0 to turn off")
+    # ==========================================================================
+    # GUI OPTIONS
+    # ==========================================================================
+    parser.add_argument('--gui', action='store_true',
+                       help='Launch interactive GUI for real-time control')
+    parser.add_argument('--W', type=int, default=450,
+                       help='GUI window width')
+    parser.add_argument('--H', type=int, default=450,
+                       help='GUI window height')
+    parser.add_argument('--radius', type=float, default=3.35,
+                       help='Default GUI camera radius from center')
+    parser.add_argument('--fovy', type=float, default=21.24,
+                       help='Default GUI camera field of view')
+    parser.add_argument('--max_spp', type=int, default=1,
+                       help='GUI maximum samples per pixel')
 
-    parser.add_argument('--amb_dim', type=int, default=2, help="ambient dimension")
-    parser.add_argument('--part', action='store_true', help="use partial training data (1/10)")
-    parser.add_argument('--part2', action='store_true', help="use partial training data (first 15s)")
-    
-    ### Enhanced Audio Encoder options
-    parser.add_argument('--use_enhanced_encoder', action='store_true', help="use enhanced audio encoder with foundation models")
-    parser.add_argument('--enhanced_encoder_type', type=str, default='whisper', choices=['whisper', 'speecht5', 'encodec', 'ensemble', 'hybrid'], help="type of enhanced encoder")
-    parser.add_argument('--use_prosody', action='store_true', help="extract and use prosodic features (pitch, energy, rhythm)")
-    parser.add_argument('--use_contrastive', action='store_true', help="use CLIP-like contrastive audio-video alignment")
-    parser.add_argument('--freeze_audio_backbone', action='store_true', help="freeze pretrained foundation model weights")
-    parser.add_argument('--foundation_model_type', type=str, default='whisper', help="foundation model type for hybrid mode")
-    
-    ### Emotion Recognition options
-    parser.add_argument('--use_emotion', action='store_true', help="enable emotion-aware facial expressions")
-    parser.add_argument('--emotion_model', type=str, default='wav2vec2', choices=['wav2vec2', 'cnn', 'prosody'], help="emotion recognition model type")
-    parser.add_argument('--emotion_checkpoint', type=str, default='', help="path to trained emotion model checkpoint")
-    parser.add_argument('--emotion_dim', type=int, default=64, help="emotion embedding dimension")
-    parser.add_argument('--emotion_strength', type=float, default=0.7, help="emotion influence strength (0-1)")
-    parser.add_argument('--emotion_smoothing', type=str, default='ema', choices=['ema', 'conv'], help="temporal smoothing method")
-    parser.add_argument('--emotion_blend_mode', type=str, default='add', choices=['add', 'multiply', 'replace'], help="emotion blendshape blend mode")
+    # ==========================================================================
+    # AUDIO PROCESSING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--att', type=int, default=2,
+                       help='Audio attention mode (0=off, 1=left-direction, 2=bi-direction)')
+    parser.add_argument('--aud', type=str, default='',
+                       help='Audio source path (empty uses default)')
+    parser.add_argument('--emb', action='store_true',
+                       help='Use audio class embedding instead of logits')
+    parser.add_argument('--portrait', action='store_true',
+                       help='Render only face (no background)')
 
-    parser.add_argument('--train_camera', action='store_true', help="optimize camera pose")
-    parser.add_argument('--smooth_path', action='store_true', help="brute-force smooth camera pose trajectory with a window size")
-    parser.add_argument('--smooth_path_window', type=int, default=7, help="smoothing window size")
+    # ==========================================================================
+    # INDIVIDUAL CODE OPTIONS
+    # ==========================================================================
+    parser.add_argument('--ind_dim', type=int, default=4,
+                       help='Individual code dimension (0=disable)')
+    parser.add_argument('--ind_num', type=int, default=20000,
+                       help='Number of individual codes (> training dataset size)')
+    parser.add_argument('--ind_dim_torso', type=int, default=8,
+                       help='Individual code dimension for torso')
 
-    # asr
-    parser.add_argument('--asr', action='store_true', help="load asr for real-time app")
-    parser.add_argument('--asr_wav', type=str, default='', help="load the wav and use as input")
-    parser.add_argument('--asr_play', action='store_true', help="play out the audio")
+    # ==========================================================================
+    # AMBIENT LIGHTING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--amb_dim', type=int, default=2,
+                       help='Ambient lighting dimension')
 
-    parser.add_argument('--asr_model', type=str, default='deepspeech')
+    # ==========================================================================
+    # DATA SUBSAMPLING OPTIONS
+    # ==========================================================================
+    parser.add_argument('--part', action='store_true',
+                       help='Use partial training data (1/10)')
+    parser.add_argument('--part2', action='store_true',
+                       help='Use partial training data (first 15 seconds)')
 
-    parser.add_argument('--asr_save_feats', action='store_true')
-    # audio FPS
-    parser.add_argument('--fps', type=int, default=50)
-    # sliding window left-middle-right length (unit: 20ms)
-    parser.add_argument('-l', type=int, default=10)
-    parser.add_argument('-m', type=int, default=50)
-    parser.add_argument('-r', type=int, default=10)
+    # ==========================================================================
+    # ENHANCED AUDIO ENCODER OPTIONS
+    # ==========================================================================
+    parser.add_argument('--use_enhanced_encoder', action='store_true',
+                       help='Use enhanced audio encoder with foundation models')
+    parser.add_argument('--enhanced_encoder_type', type=str, default='whisper',
+                       choices=['whisper', 'speecht5', 'encodec', 'ensemble', 'hybrid'],
+                       help='Type of enhanced encoder')
+    parser.add_argument('--use_prosody', action='store_true',
+                       help='Extract and use prosodic features (pitch, energy, rhythm)')
+    parser.add_argument('--use_contrastive', action='store_true',
+                       help='Use CLIP-like contrastive audio-video alignment')
+    parser.add_argument('--freeze_audio_backbone', action='store_true',
+                       help='Freeze pretrained foundation model weights')
+    parser.add_argument('--foundation_model_type', type=str, default='whisper',
+                       help='Foundation model type for hybrid mode')
 
-    opt = parser.parse_args()
+    # ==========================================================================
+    # EMOTION RECOGNITION OPTIONS
+    # ==========================================================================
+    parser.add_argument('--use_emotion', action='store_true',
+                       help='Enable emotion-aware facial expressions')
+    parser.add_argument('--emotion_model', type=str, default='wav2vec2',
+                       choices=['wav2vec2', 'cnn', 'prosody'],
+                       help='Emotion recognition model type')
+    parser.add_argument('--emotion_checkpoint', type=str, default='',
+                       help='Path to trained emotion model checkpoint')
+    parser.add_argument('--emotion_dim', type=int, default=64,
+                       help='Emotion embedding dimension')
+    parser.add_argument('--emotion_strength', type=float, default=0.7,
+                       help='Emotion influence strength (0-1)')
+    parser.add_argument('--emotion_smoothing', type=str, default='ema',
+                       choices=['ema', 'conv'],
+                       help='Temporal smoothing method for emotions')
+    parser.add_argument('--emotion_blend_mode', type=str, default='add',
+                       choices=['add', 'multiply', 'replace'],
+                       help='Emotion blendshape blend mode')
 
+    # ==========================================================================
+    # CAMERA OPTIMIZATION OPTIONS
+    # ==========================================================================
+    parser.add_argument('--train_camera', action='store_true',
+                       help='Optimize camera pose during training')
+    parser.add_argument('--smooth_path', action='store_true',
+                       help='Smooth camera pose trajectory')
+    parser.add_argument('--smooth_path_window', type=int, default=7,
+                       help='Smoothing window size for camera path')
+
+    # ==========================================================================
+    # ASR (AUTOMATIC SPEECH RECOGNITION) OPTIONS
+    # ==========================================================================
+    parser.add_argument('--asr', action='store_true',
+                       help='Load ASR for real-time applications')
+    parser.add_argument('--asr_wav', type=str, default='',
+                       help='WAV file path for ASR input')
+    parser.add_argument('--asr_play', action='store_true',
+                       help='Play audio output in ASR mode')
+    parser.add_argument('--asr_model', type=str, default='deepspeech',
+                       help='ASR model type')
+    parser.add_argument('--asr_save_feats', action='store_true',
+                       help='Save ASR features to file')
+
+    # ==========================================================================
+    # AUDIO PROCESSING PARAMETERS
+    # ==========================================================================
+    parser.add_argument('--fps', type=int, default=50,
+                       help='Audio processing FPS')
+    parser.add_argument('-l', type=int, default=10,
+                       help='ASR sliding window left context (20ms units)')
+    parser.add_argument('-m', type=int, default=50,
+                       help='ASR sliding window middle context (20ms units)')
+    parser.add_argument('-r', type=int, default=10,
+                       help='ASR sliding window right context (20ms units)')
+
+    return parser
+
+# ==============================================================================
+# MAIN EXECUTION LOGIC
+# ==============================================================================
+
+def setup_options(opt):
+    """Apply option presets and validation."""
+    # Apply -O preset (optimization)
     if opt.O:
         opt.fp16 = True
         opt.exp_eye = True
 
+    # Apply test mode presets (disabled for now)
     if opt.test and False:
         opt.smooth_path = True
         opt.smooth_eye = True
         opt.smooth_lips = True
 
+    # Force CUDA raymarching
     opt.cuda_ray = True
-    # assert opt.cuda_ray, "Only support CUDA ray mode."
 
+    # Validate patch size
     if opt.patch_size > 1:
-        # assert opt.patch_size > 16, "patch_size should > 16 to run LPIPS loss."
-        assert opt.num_rays % (opt.patch_size ** 2) == 0, "patch_size ** 2 should be dividable by num_rays."
-    
-    # if opt.finetune_lips:
-    #     # do not update density grid in finetune stage
-    #     opt.update_extra_interval = 1e9
-    
-    print(opt)
-    
-    seed_everything(opt.seed)
+        assert opt.patch_size ** 2 <= opt.num_rays, "patch_size ** 2 should be <= num_rays."
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = NeRFNetwork(opt)
+def load_model_checkpoint(model, opt):
+    """Load model checkpoint for torso training."""
+    if not (opt.torso and opt.head_ckpt):
+        return
 
-    # manually load state dict for head
-    if opt.torso and opt.head_ckpt != '':
-        
-        model_dict = torch.load(opt.head_ckpt, map_location='cpu')['model']
+    print(f"[INFO] Loading head checkpoint: {opt.head_ckpt}")
+
+    try:
+        checkpoint = torch.load(opt.head_ckpt, map_location='cpu')
+
+        if isinstance(checkpoint, dict) and 'model' in checkpoint:
+            model_dict = checkpoint['model']
+        else:
+            model_dict = checkpoint
 
         missing_keys, unexpected_keys = model.load_state_dict(model_dict, strict=False)
 
-        if len(missing_keys) > 0:
-            print(f"[WARN] missing keys: {missing_keys}")
-        if len(unexpected_keys) > 0:
-            print(f"[WARN] unexpected keys: {unexpected_keys}")   
+        if missing_keys:
+            print(f"[WARN] Missing keys: {missing_keys}")
+        if unexpected_keys:
+            print(f"[WARN] Unexpected keys: {unexpected_keys}")
 
-        # freeze these keys
-        for k, v in model.named_parameters():
-            if k in model_dict:
-                print(f'[INFO] freeze {k}, {v.shape}')
-                v.requires_grad = False
+        # Freeze loaded parameters
+        for name, param in model.named_parameters():
+            if name in model_dict:
+                param.requires_grad = False
+                print(f"[INFO] Froze parameter: {name} {param.shape}")
 
-    
-    # print(model)
+    except Exception as e:
+        print(f"[ERROR] Failed to load checkpoint: {e}")
+        raise
 
-    # criterion = torch.nn.MSELoss(reduction='none')
+
+def create_model_and_criterion(opt):
+    """Create model and loss criterion."""
+    # Extract only the necessary parameters for NeRFNetwork
+    model = NeRFNetwork(
+        # Core network parameters
+        emb=getattr(opt, 'emb', False),
+        asr_model=getattr(opt, 'asr_model', 'deepspeech'),
+        att=getattr(opt, 'att', 2),
+
+        # Face modeling parameters
+        au45=getattr(opt, 'au45', False),
+        bs_area=getattr(opt, 'bs_area', "upper"),
+        exp_eye=getattr(opt, 'exp_eye', False),
+        individual_dim=getattr(opt, 'ind_dim', 4),
+        individual_dim_torso=getattr(opt, 'ind_dim_torso', 8),
+
+        # Training parameters
+        torso=getattr(opt, 'torso', False),
+        train_camera=getattr(opt, 'train_camera', False),
+
+        # Enhanced audio encoder parameters
+        use_enhanced_encoder=getattr(opt, 'use_enhanced_encoder', False),
+        enhanced_encoder_type=getattr(opt, 'enhanced_encoder_type', 'whisper'),
+        use_prosody=getattr(opt, 'use_prosody', True),
+        foundation_model_type=getattr(opt, 'foundation_model_type', 'whisper'),
+        use_contrastive=getattr(opt, 'use_contrastive', False),
+        freeze_audio_backbone=getattr(opt, 'freeze_audio_backbone', True),
+
+        # Emotion recognition parameters
+        use_emotion=getattr(opt, 'use_emotion', False),
+        emotion_model=getattr(opt, 'emotion_model', 'wav2vec2'),
+        emotion_checkpoint=getattr(opt, 'emotion_checkpoint', ''),
+        emotion_strength=getattr(opt, 'emotion_strength', 0.7),
+    )
+
+    # Update model with scene parameters from opt
+    model.bound = getattr(opt, 'bound', 1.0)
+    model.min_near = getattr(opt, 'min_near', 0.05)
+    model.density_thresh = getattr(opt, 'density_thresh', 10.0)
+    model.density_thresh_torso = getattr(opt, 'density_thresh_torso', 0.01)
+    model.cuda_ray = getattr(opt, 'cuda_ray', True)
+
+    # Load checkpoint if torso training
+    load_model_checkpoint(model, opt)
+
+    # Use L1 loss (more robust than MSE for images)
     criterion = torch.nn.L1Loss(reduction='none')
 
+    return model, criterion
 
-    if opt.test:
-        
+
+def run_test_mode(opt, model, criterion, device):
+    """Run inference/test mode."""
+    print("=" * 60)
+    print("TEST MODE")
+    print("=" * 60)
+
+    # Setup metrics
         if opt.gui:
-            metrics = [] # use no metric in GUI for faster initialization...
+        metrics = []  # Disable metrics for faster GUI initialization
         else:
-            # metrics = [PSNRMeter(), LPIPSMeter(device=device)]
             metrics = [PSNRMeter(), LPIPSMeter(device=device), LMDMeter(backend='fan')]
 
-        trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, criterion=criterion, fp16=opt.fp16, metrics=metrics, use_checkpoint=opt.ckpt)
+    # Create trainer
+    trainer = Trainer('ngp', opt, model, device=device,
+                     workspace=opt.workspace, criterion=criterion,
+                     fp16=opt.fp16, metrics=metrics, use_checkpoint=opt.ckpt)
 
+    # Load audio features for test dataset
         if opt.test_train:
+        # Test on training dataset
             test_set = NeRFDataset(opt, device=device, type='train')
-            # a manual fix to test on the training dataset
             test_set.training = False 
             test_set.num_rays = -1
             test_loader = test_set.dataloader()
         else:
+        # Test on test dataset
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
 
-
-        # temp fix: for update_extra_states
+    # Update model with audio features
         model.aud_features = test_loader._data.auds
         model.eye_areas = test_loader._data.eye_area
 
         if opt.gui:
+        # Launch interactive GUI
             from nerf_triplane.gui import NeRFGUI
-            # we still need test_loader to provide audio features for testing.
             with NeRFGUI(opt, trainer, test_loader) as gui:
                 gui.render()
-
         else:
-            ### test and save video (fast)  
+        # Run inference and save video
             trainer.test(test_loader)
 
-            ### evaluate metrics (slow)
+        # Run evaluation if ground truth available
             if test_loader.has_gt:
                 trainer.evaluate(test_loader)
 
 
+def run_training_mode(opt, model, criterion, device):
+    """Run training mode."""
+    print("=" * 60)
+    print("TRAINING MODE")
+    print("=" * 60)
 
-    else:
+    # Create optimizer
+    optimizer_func = lambda model: torch.optim.AdamW(
+        model.get_params(opt.lr, opt.lr_net),
+        betas=(0, 0.99),
+        eps=1e-8
+    )
 
-        optimizer = lambda model: torch.optim.AdamW(model.get_params(opt.lr, opt.lr_net), betas=(0, 0.99), eps=1e-8)
-
+    # Create dataset and dataloader
         train_loader = NeRFDataset(opt, device=device, type='train').dataloader()
 
-        assert len(train_loader) < opt.ind_num, f"[ERROR] dataset too many frames: {len(train_loader)}, please increase --ind_num to this number!"
+    # Validate dataset size
+    assert len(train_loader) < opt.ind_num, (
+        f"[ERROR] Dataset too large: {len(train_loader)} frames, "
+        f"increase --ind_num to at least this value!"
+    )
 
-        # temp fix: for update_extra_states
+    # Update model with training data
         model.aud_features = train_loader._data.auds
         model.eye_area = train_loader._data.eye_area
         model.poses = train_loader._data.poses
 
-        # decay to 0.1 * init_lr at last iter step
+    # Setup learning rate scheduler
         if opt.finetune_lips:
-            scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.05 ** (iter / opt.iters))
+        scheduler_func = lambda optimizer: optim.lr_scheduler.LambdaLR(
+            optimizer, lambda iter: 0.05 ** (iter / opt.iters)
+        )
         else:
-            scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.5 ** (iter / opt.iters))
+        scheduler_func = lambda optimizer: optim.lr_scheduler.LambdaLR(
+            optimizer, lambda iter: 0.5 ** (iter / opt.iters)
+        )
 
-        metrics = [PSNRMeter(), LPIPSMeter(device=device),LMDMeter(backend='fan')]
-
+    # Setup metrics and evaluation
+    metrics = [PSNRMeter(), LPIPSMeter(device=device), LMDMeter(backend='fan')]
         eval_interval = max(1, int(5000 / len(train_loader)))
-        trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, optimizer=optimizer, criterion=criterion, ema_decay=0.95, fp16=opt.fp16, lr_scheduler=scheduler, scheduler_update_every_step=True, metrics=metrics, use_checkpoint=opt.ckpt, eval_interval=eval_interval)
-        with open(os.path.join(opt.workspace, 'opt.txt'), 'a') as f:
+
+    # Create trainer
+    trainer = Trainer(
+        'ngp', opt, model, device=device,
+        workspace=opt.workspace, optimizer=optimizer_func,
+        criterion=criterion, ema_decay=0.95, fp16=opt.fp16,
+        lr_scheduler=scheduler_func, scheduler_update_every_step=True,
+        metrics=metrics, use_checkpoint=opt.ckpt,
+        eval_interval=eval_interval
+    )
+
+    # Save options to workspace
+    with open(os.path.join(opt.workspace, 'opt.txt'), 'w') as f:
             f.write(str(opt))
+
         if opt.gui:
+        # Launch training GUI
+        from nerf_triplane.gui import NeRFGUI
             with NeRFGUI(opt, trainer, train_loader) as gui:
                 gui.render()
-        
         else:
+        # Run training
             valid_loader = NeRFDataset(opt, device=device, type='val', downscale=1).dataloader()
-
             max_epochs = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
-            print(f'[INFO] max_epoch = {max_epochs}')
+
+        print(f"[INFO] Training for {max_epochs} epochs ({opt.iters} total iterations)")
+
             trainer.train(train_loader, valid_loader, max_epochs)
 
-            # free some mem
+        # Cleanup memory
             del train_loader, valid_loader
             torch.cuda.empty_cache()
 
-            # also test
+        # Run final test
             test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
             
             if test_loader.has_gt:
-                trainer.evaluate(test_loader) # blender has gt, so evaluate it.
+            trainer.evaluate(test_loader)
 
             trainer.test(test_loader)
+
+
+def main():
+    """Main entry point."""
+    # Setup PyTorch precision
+    setup_torch_precision()
+
+    # Parse arguments
+    parser = create_argument_parser()
+    opt = parser.parse_args()
+
+    # Apply option presets and validation
+    setup_options(opt)
+
+    # Print configuration
+    print("\n" + "=" * 60)
+    print("CONFIGURATION")
+    print("=" * 60)
+    print(opt)
+    print("=" * 60 + "\n")
+
+    # Set random seed
+    seed_everything(opt.seed)
+
+    # Setup device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"[INFO] Using device: {device}")
+
+    # Create model and criterion
+    model, criterion = create_model_and_criterion(opt)
+
+    # Run appropriate mode
+    if opt.test:
+        run_test_mode(opt, model, criterion, device)
+    else:
+        run_training_mode(opt, model, criterion, device)
+
+
+if __name__ == '__main__':
+    main()

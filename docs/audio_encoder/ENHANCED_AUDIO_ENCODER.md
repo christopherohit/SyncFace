@@ -1,4 +1,4 @@
-# Enhanced Audio Encoder for SyncTalk
+# Enhanced Audio Encoder for SyncFace
 
 ## Overview
 
@@ -408,11 +408,11 @@ Potential directions for further enhancement:
 For issues or questions:
 - Open an issue on GitHub
 - Check existing issues for solutions
-- Refer to the main SyncTalk documentation
+- Refer to the main SyncFace documentation
 
 ---
 
 ## License
 
-Same license as SyncTalk project.
+Same license as SyncFace project.
 

@@ -1,8 +1,8 @@
-# Emotion/Melody Embedding Integration for SyncTalk
+# Emotion/Melody Embedding Integration for SyncFace
 
 ## 🎭 Overview
 
-This module adds **Speech Emotion Recognition (SER)** and **emotion-sensitive facial expressions** to SyncTalk, enabling natural emotional synchronization between voice and facial animations.
+This module adds **Speech Emotion Recognition (SER)** and **emotion-sensitive facial expressions** to SyncFace, enabling natural emotional synchronization between voice and facial animations.
 
 ### Key Features
 
@@ -79,7 +79,7 @@ python scripts/train_emotion_recognition.py \
   --output_dir output/emotion_training
 ```
 
-### 2. Train SyncTalk with Emotion Integration
+### 2. Train SyncFace with Emotion Integration
 
 ```bash
 python main.py data/Macron \
@@ -473,9 +473,9 @@ final_blendshapes = clamp(final_blendshapes, 0, 1)
 ## 🎓 Citation
 
 ```bibtex
-@article{synctalk_emotion_2025,
+@article{syncface_emotion_2025,
   title={Emotion-Sensitive Facial Animation via Speech Emotion Recognition},
-  author={SyncTalk Team},
+  author={SyncFace Team},
   journal={arXiv preprint},
   year={2025}
 }

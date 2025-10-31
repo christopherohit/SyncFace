@@ -1,10 +1,10 @@
 #!/bin/bash
 # Complete Training Script for Macron with Enhanced Audio + Emotion
-# Author: SyncTalk Enhanced
+# Author: SyncFace Enhanced
 # Date: 2025
 
 echo "=========================================="
-echo "SyncTalk Enhanced Training - Macron"
+echo "SyncFace Enhanced Training - Macron"
 echo "=========================================="
 
 # Activate conda environment

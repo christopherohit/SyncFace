@@ -102,7 +102,7 @@ python main.py data/Macron \
 ## 📂 File Structure
 
 ```
-SyncTalk/
+SyncFace/
 ├── nerf_triplane/
 │   ├── enhanced_audio_encoder.py      # NEW: Foundation models
 │   ├── audio_encoder_adapter.py       # NEW: Adapters
@@ -235,7 +235,7 @@ python scripts/train_emotion_recognition.py \
   --use_pretrained \
   --output_dir output/emotion_training
 
-# Step 2: Train SyncTalk with emotion
+# Step 2: Train SyncFace with emotion
 conda activate synctalk
 python main.py data/Macron \
   --workspace output/Macron_emotion_full \

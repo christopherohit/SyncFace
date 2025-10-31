@@ -1,5 +1,5 @@
 """
-Simple Emotion Recognition for SyncTalk
+Simple Emotion Recognition for SyncFace
 Lightweight implementation without heavy dependencies
 """
 

@@ -1,4 +1,4 @@
-# 🎭 SyncTalk Enhanced Audio Encoder
+# 🎭 SyncFace Enhanced Audio Encoder
 
 > **Upgrade your talking heads with foundation models for prosodic features, emotional context, and speaking style!**
 
@@ -6,7 +6,7 @@
 
 ## 🌟 What's New?
 
-The enhanced audio encoder transforms SyncTalk from a lip-sync-only system to a **fully expressive talking head generator** by adding:
+The enhanced audio encoder transforms SyncFace from a lip-sync-only system to a **fully expressive talking head generator** by adding:
 
 | Feature | Before | After |
 |---------|--------|-------|
@@ -302,7 +302,7 @@ This installs:
 - `transformers>=4.36.0` - Foundation models
 - `accelerate>=0.20.0` - Efficient loading
 - `librosa` - Audio processing
-- All existing SyncTalk dependencies
+- All existing SyncFace dependencies
 
 ---
 
@@ -325,8 +325,8 @@ This installs:
 
 ## 🤔 FAQ
 
-**Q: Will this break my existing SyncTalk setup?**
-A: No! It's completely optional. Without the flags, SyncTalk works exactly as before.
+**Q: Will this break my existing SyncFace setup?**
+A: No! It's completely optional. Without the flags, SyncFace works exactly as before.
 
 **Q: Do I need to retrain my models?**
 A: Depends. You can use frozen foundation models (faster) or fine-tune (better quality).
@@ -379,7 +379,7 @@ If you use the enhanced audio encoder in your research:
 ```bibtex
 @article{synctalk_enhanced_2025,
   title={Enhanced Audio-Visual Synthesis with Foundation Models for Expressive Talking Heads},
-  author={SyncTalk Team},
+  author={SyncFace Team},
   year={2025}
 }
 ```
@@ -392,7 +392,7 @@ Built on top of:
 - [OpenAI Whisper](https://github.com/openai/whisper)
 - [Microsoft SpeechT5](https://github.com/microsoft/SpeechT5)
 - [Meta EnCodec](https://github.com/facebookresearch/encodec)
-- [SyncTalk](https://github.com/ZiqiaoPeng/SyncTalk)
+- [SyncFace](https://github.com/ZiqiaoPeng/SyncTalk)  # Original SyncTalk project
 
 ---
 

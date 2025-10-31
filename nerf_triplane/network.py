@@ -184,54 +184,169 @@ class MLP(nn.Module):
 
 class NeRFNetwork(NeRFRenderer):
     def __init__(self,
-                 opt,
-                 audio_dim = 32,
-                 # torso net (hard coded for now)
+                 # Core network parameters
+                 emb=False,
+                 asr_model='deepspeech',
+                 att=2,
+
+                 # Face modeling parameters
+                 au45=False,
+                 bs_area="upper",
+                 exp_eye=False,
+                 individual_dim=4,
+                 individual_dim_torso=8,
+
+                 # Training parameters
+                 torso=False,
+                 train_camera=False,
+
+                 # Enhanced audio encoder parameters
+                 use_enhanced_encoder=False,
+                 enhanced_encoder_type='whisper',
+                 use_prosody=True,
+                 foundation_model_type='whisper',
+                 use_contrastive=False,
+                 freeze_audio_backbone=True,
+
+                 # Emotion recognition parameters
+                 use_emotion=False,
+                 emotion_model='wav2vec2',
+                 emotion_checkpoint='',
+                 emotion_strength=0.7,
+
+                 # Optional audio_dim override
+                 audio_dim=32
                  ):
-        super().__init__(opt)
+        """
+        Initialize SyncFace NeRF Network with specific parameters instead of passing entire opt object.
 
-        # audio embedding
-        self.emb = self.opt.emb
-        
-        # Check if using enhanced audio encoder
-        self.use_enhanced_encoder = getattr(opt, 'use_enhanced_encoder', False)
-        self.enhanced_encoder_type = getattr(opt, 'enhanced_encoder_type', 'whisper')  # whisper, speecht5, encodec, ensemble, hybrid
-        self.use_prosody = getattr(opt, 'use_prosody', True)
-        
-        # Check if using emotion recognition
-        self.use_emotion = getattr(opt, 'use_emotion', False)
-        self.emotion_model = getattr(opt, 'emotion_model', 'wav2vec2')
-        self.emotion_checkpoint = getattr(opt, 'emotion_checkpoint', '')
-        self.emotion_strength = getattr(opt, 'emotion_strength', 0.7)
+        Args:
+            emb: Whether to use audio embedding
+            asr_model: ASR model type ('deepspeech', 'ave', 'hubert', 'esperanto')
+            att: Audio attention mode (0=off, 1=left, 2=bi-direction)
 
-        if 'esperanto' in self.opt.asr_model:
+            au45: Use OpenFace AU45 blendshapes
+            bs_area: Blendshape area ("upper" or "eye")
+            exp_eye: Explicitly control eye movements
+            individual_dim: Individual code dimension (0=disable)
+            individual_dim_torso: Torso individual code dimension
+
+            torso: Train torso (fix head and train torso)
+            train_camera: Optimize camera pose during training
+
+            use_enhanced_encoder: Use enhanced foundation model encoders
+            enhanced_encoder_type: Type of enhanced encoder
+            use_prosody: Extract prosodic features
+            foundation_model_type: Foundation model type for hybrid
+            use_contrastive: Use CLIP-like contrastive learning
+            freeze_audio_backbone: Freeze foundation model weights
+
+            use_emotion: Enable emotion-aware expressions
+            emotion_model: Emotion recognition model type
+            emotion_checkpoint: Path to emotion checkpoint
+            emotion_strength: Emotion influence strength
+
+            audio_dim: Audio feature dimension (default: 32)
+        """
+        # Create opt-like object for NeRFRenderer parent class
+        # NeRFRenderer expects certain attributes from opt
+        class OptWrapper:
+            def __init__(self):
+                # Scene parameters (will be set by main.py later)
+                self.bound = 1.0
+                self.min_near = 0.05
+                self.density_thresh = 10.0
+                self.density_thresh_torso = 0.01
+                self.cuda_ray = True
+
+                # Face modeling
+                self.au45 = au45
+                self.bs_area = bs_area
+                self.exp_eye = exp_eye
+                self.ind_dim = individual_dim  # NeRFRenderer expects ind_dim
+                self.ind_dim_torso = individual_dim_torso
+
+                # Training
+                self.torso = torso
+                self.train_camera = train_camera
+                self.ind_num = 20000  # Default from main.py
+
+                # Test mode (set to False for training)
+                self.test_train = False
+                self.smooth_lips = False
+
+        opt_wrapper = OptWrapper()
+
+        super().__init__(opt_wrapper)
+
+        # Store all parameters as instance attributes
+        self.emb = emb
+        self.asr_model = asr_model
+        self.att = att
+        self.au45 = au45
+        self.bs_area = bs_area
+        self.exp_eye = exp_eye
+        self.individual_dim = individual_dim
+        self.individual_dim_torso = individual_dim_torso
+        self.torso = torso
+        self.train_camera = train_camera
+
+        # Enhanced encoder parameters
+        self.use_enhanced_encoder = use_enhanced_encoder
+        self.enhanced_encoder_type = enhanced_encoder_type
+        self.use_prosody = use_prosody
+        self.foundation_model_type = foundation_model_type
+        self.use_contrastive = use_contrastive
+        self.freeze_audio_backbone = freeze_audio_backbone
+
+        # Emotion parameters
+        self.use_emotion = use_emotion
+        self.emotion_model = emotion_model
+        self.emotion_checkpoint = emotion_checkpoint
+        self.emotion_strength = emotion_strength
+
+        # Determine audio input dimension based on ASR model and encoder type
+        if 'esperanto' in self.asr_model:
             self.audio_in_dim = 44
-        elif 'deepspeech' in self.opt.asr_model:
+        elif 'deepspeech' in self.asr_model:
             self.audio_in_dim = 29
-        elif 'hubert' in self.opt.asr_model:
+        elif 'hubert' in self.asr_model:
             self.audio_in_dim = 1024
         elif self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
             # Enhanced encoders output 512-dim features by default
             self.audio_in_dim = 512
         else:
             self.audio_in_dim = 32
-            
+
+        # Create audio embedding if enabled
         if self.emb:
             self.embedding = nn.Embedding(self.audio_in_dim, self.audio_in_dim)
 
-        # audio network
+        # Audio feature dimension
         self.audio_dim = audio_dim
-        
-        # Use enhanced foundation model encoders if available and enabled
+
+        # Initialize audio encoder based on type
+        self._init_audio_encoder()
+
+        # Initialize audio attention if enabled
+        if self.att > 0:
+            self.audio_att_net = AudioAttNet(self.audio_dim)
+
+        # Initialize emotion module if enabled
+        self._init_emotion_module()
+
+
+    def _init_audio_encoder(self):
+        """Initialize the appropriate audio encoder."""
         if self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
             print(f"[INFO] Using enhanced audio encoder: {self.enhanced_encoder_type}")
-            
+
             if self.enhanced_encoder_type == 'hybrid':
                 # Hybrid encoder combines LRS2 + foundation models
                 self.enhanced_audio_encoder = HybridAudioEncoder(
                     use_lrs2=True,
                     use_foundation=True,
-                    foundation_type=getattr(opt, 'foundation_model_type', 'whisper'),
+                    foundation_type=self.foundation_model_type,
                     output_dim=self.audio_in_dim
                 )
             else:
@@ -240,44 +355,45 @@ class NeRFNetwork(NeRFRenderer):
                     encoder_type=self.enhanced_encoder_type,
                     output_dim=self.audio_in_dim,
                     use_prosody=self.use_prosody,
-                    use_contrastive=getattr(opt, 'use_contrastive', False),
-                    freeze_backbone=getattr(opt, 'freeze_audio_backbone', True)
+                    use_contrastive=self.use_contrastive,
+                    freeze_backbone=self.freeze_audio_backbone
                 )
-            
+
             # Use enhanced AudioNet for processing
-            if self.opt.asr_model == 'ave':
+            if self.asr_model == 'ave':
                 self.audio_net = FoundationModelAudioNetAVE(self.audio_in_dim, self.audio_dim)
             else:
                 self.audio_net = FoundationModelAudioNet(self.audio_in_dim, self.audio_dim)
         else:
             # Use original AudioNet
-            if self.opt.asr_model == 'ave':
+            if self.asr_model == 'ave':
                 self.audio_net = AudioNet_ave(self.audio_in_dim, self.audio_dim)
             else:
                 self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim)
 
-        self.att = self.opt.att
-        if self.att > 0:
-            self.audio_att_net = AudioAttNet(self.audio_dim)
-        
-        # Initialize emotion module if enabled
-        if self.use_emotion and EMOTION_MODULES_AVAILABLE:
-            print(f"[INFO] Initializing emotion recognition: {self.emotion_model}")
-            self.emotion_module = EmotionAwareNeRFModule(
-                opt=self.opt,
-                emotion_model=self.emotion_model,
-                emotion_dim=64,
-                use_emotion_conditioning=True
-            )
-            
-            # Load emotion checkpoint if provided
-            if self.emotion_checkpoint and os.path.exists(self.emotion_checkpoint):
-                try:
-                    checkpoint = torch.load(self.emotion_checkpoint, map_location='cpu')
-                    self.emotion_module.load_state_dict(checkpoint['model_state_dict'], strict=False)
-                    print(f"[INFO] Loaded emotion checkpoint from {self.emotion_checkpoint}")
-                except Exception as e:
-                    print(f"[WARN] Could not load emotion checkpoint: {e}")
+
+    def _init_emotion_module(self):
+        """Initialize emotion recognition module if enabled."""
+        if not (self.use_emotion and EMOTION_MODULES_AVAILABLE):
+            return
+
+        print(f"[INFO] Initializing emotion recognition: {self.emotion_model}")
+
+        self.emotion_module = EmotionAwareNeRFModule(
+            emotion_model=self.emotion_model,
+            emotion_dim=64,
+            emotion_strength=self.emotion_strength,
+            use_emotion_conditioning=True
+        )
+
+        # Load emotion checkpoint if provided
+        if self.emotion_checkpoint and os.path.exists(self.emotion_checkpoint):
+            try:
+                checkpoint = torch.load(self.emotion_checkpoint, map_location='cpu')
+                self.emotion_module.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                print(f"[INFO] Loaded emotion checkpoint from {self.emotion_checkpoint}")
+            except Exception as e:
+                print(f"[WARN] Could not load emotion checkpoint: {e}")
 
         # DYNAMIC PART
         self.num_levels = 12

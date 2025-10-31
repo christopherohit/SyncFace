@@ -1,5 +1,5 @@
 """
-Emotion/Melody Embedding Module for SyncTalk
+Emotion/Melody Embedding Module for SyncFace
 
 This module implements Speech Emotion Recognition (SER) and integrates emotion
 embeddings into blendshapes for emotion-sensitive facial expressions.

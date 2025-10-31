@@ -1,7 +1,7 @@
 """
 Emotion Integration Module
 
-Integrates emotion recognition and blendshape mapping into the SyncTalk pipeline.
+Integrates emotion recognition and blendshape mapping into the SyncFace pipeline.
 This enables emotion-sensitive facial expressions synchronized with voice.
 """
 
@@ -21,37 +21,38 @@ from .emotion_module import (
 class EmotionAwareNeRFModule(nn.Module):
     """
     Emotion-aware module that integrates into NeRFNetwork.
-    
+
     This module:
     1. Extracts emotion from audio
     2. Maps emotion to blendshape adjustments
     3. Conditions facial features on emotion
     """
-    
+
     def __init__(self,
-                 opt,
                  emotion_model: str = 'wav2vec2',
                  emotion_dim: int = 64,
                  num_blendshapes: int = 52,
+                 emotion_strength: float = 0.7,
                  use_emotion_conditioning: bool = True):
         super().__init__()
-        
-        self.opt = opt
+
+        self.emotion_model = emotion_model
         self.emotion_dim = emotion_dim
+        self.emotion_strength = emotion_strength
         self.use_emotion_conditioning = use_emotion_conditioning
-        
+
         # Emotion recognition module
         self.emotion_recognizer = EmotionRecognitionModule(
             emotion_model=emotion_model,
             emotion_dim=emotion_dim
         )
-        
+
         # Emotion to blendshape mapper
         self.emotion_blendshape_mapper = EmotionBlendshapeMapper(
             emotion_dim=emotion_dim,
             num_blendshapes=num_blendshapes
         )
-        
+
         # Emotion embedding for conditioning NeRF
         self.emotion_mlp = nn.Sequential(
             nn.Linear(emotion_dim, 128),
@@ -59,7 +60,7 @@ class EmotionAwareNeRFModule(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 64)  # Same dim as audio features
         )
-        
+
         # Temporal smoothing for emotions (avoid jitter)
         self.emotion_smoothing = EmotionTemporalSmoothing(
             emotion_dim=emotion_dim,
