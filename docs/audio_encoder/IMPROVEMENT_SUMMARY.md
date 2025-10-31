@@ -427,7 +427,7 @@ This implementation builds upon:
 - **Microsoft SpeechT5**: Unified speech-text model
 - **Meta EnCodec**: Neural audio codec
 - **OpenAI CLIP**: Contrastive learning framework
-- **SyncTalk**: Original talking head framework
+- **SyncFace**: Enhanced talking head framework (originally SyncTalk)
 
 ---
 
