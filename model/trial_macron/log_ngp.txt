@@ -1,0 +1,29 @@
+[INFO] Trainer: ngp | 2025-10-30_20-38-22 | cuda | fp16 | model/trial_macron
+[INFO] #parameters: 768165
+[INFO] Loading latest checkpoint ...
+[WARN] No checkpoint found, model randomly initialized.
+==> Start Training Epoch 1, lr=0.001000 ...
+loss=0.0263
+==> Finished Epoch 1.
+++> Evaluate at epoch 1 ...
+PSNR = 35.072094
+LPIPS (alex) = 0.028697
+LMD (fan) = 2.501615
+++> Evaluate epoch 1 Finished.
+==> Start Training Epoch 2, lr=0.000678 ...
+loss=0.0218
+==> Finished Epoch 2.
+++> Evaluate at epoch 2 ...
+PSNR = 35.695872
+LPIPS (alex) = 0.024644
+LMD (fan) = 2.488046
+++> Evaluate epoch 2 Finished.
+==> Start Training Epoch 3, lr=0.000460 ...
+loss=0.0208
+==> Finished Epoch 3.
+++> Evaluate at epoch 3 ...
+PSNR = 36.053504
+LPIPS (alex) = 0.023383
+LMD (fan) = 2.542600
+++> Evaluate epoch 3 Finished.
+==> Start Training Epoch 4, lr=0.000312 ...

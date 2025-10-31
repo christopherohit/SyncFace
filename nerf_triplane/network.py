@@ -18,6 +18,15 @@ except ImportError:
     ENHANCED_ENCODERS_AVAILABLE = False
     print("[WARN] Enhanced audio encoders not available. Using original encoders only.")
 
+# Import emotion modules
+try:
+    from .emotion_module import EmotionRecognitionModule
+    from .emotion_integration import EmotionAwareNeRFModule
+    EMOTION_MODULES_AVAILABLE = True
+except ImportError:
+    EMOTION_MODULES_AVAILABLE = False
+    print("[WARN] Emotion modules not available. Emotion features disabled.")
+
 
 class Conv2d(nn.Module):
     def __init__(self, cin, cout, kernel_size, stride, padding, residual=False, leakyReLU=False, *args, **kwargs):
@@ -188,6 +197,12 @@ class NeRFNetwork(NeRFRenderer):
         self.use_enhanced_encoder = getattr(opt, 'use_enhanced_encoder', False)
         self.enhanced_encoder_type = getattr(opt, 'enhanced_encoder_type', 'whisper')  # whisper, speecht5, encodec, ensemble, hybrid
         self.use_prosody = getattr(opt, 'use_prosody', True)
+        
+        # Check if using emotion recognition
+        self.use_emotion = getattr(opt, 'use_emotion', False)
+        self.emotion_model = getattr(opt, 'emotion_model', 'wav2vec2')
+        self.emotion_checkpoint = getattr(opt, 'emotion_checkpoint', '')
+        self.emotion_strength = getattr(opt, 'emotion_strength', 0.7)
 
         if 'esperanto' in self.opt.asr_model:
             self.audio_in_dim = 44
@@ -244,6 +259,25 @@ class NeRFNetwork(NeRFRenderer):
         self.att = self.opt.att
         if self.att > 0:
             self.audio_att_net = AudioAttNet(self.audio_dim)
+        
+        # Initialize emotion module if enabled
+        if self.use_emotion and EMOTION_MODULES_AVAILABLE:
+            print(f"[INFO] Initializing emotion recognition: {self.emotion_model}")
+            self.emotion_module = EmotionAwareNeRFModule(
+                opt=self.opt,
+                emotion_model=self.emotion_model,
+                emotion_dim=64,
+                use_emotion_conditioning=True
+            )
+            
+            # Load emotion checkpoint if provided
+            if self.emotion_checkpoint and os.path.exists(self.emotion_checkpoint):
+                try:
+                    checkpoint = torch.load(self.emotion_checkpoint, map_location='cpu')
+                    self.emotion_module.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                    print(f"[INFO] Loaded emotion checkpoint from {self.emotion_checkpoint}")
+                except Exception as e:
+                    print(f"[WARN] Could not load emotion checkpoint: {e}")
 
         # DYNAMIC PART
         self.num_levels = 12
@@ -368,6 +402,20 @@ class NeRFNetwork(NeRFRenderer):
 
         if self.att > 0:
             enc_a = self.audio_att_net(enc_a.unsqueeze(0)) # [1, 32]
+        
+        # Apply emotion conditioning if enabled
+        if self.use_emotion and hasattr(self, 'emotion_module'):
+            try:
+                # Extract emotion from audio features
+                # Note: This is a simplified version - you may need to pass raw audio
+                emotion_result = self.emotion_module(a.unsqueeze(0))
+                emotion_cond = emotion_result['emotion_cond']
+                
+                # Blend audio features with emotion conditioning
+                enc_a = enc_a + self.emotion_strength * emotion_cond[:, :enc_a.shape[-1]]
+            except Exception as e:
+                # Silently continue if emotion fails
+                pass
             
         return enc_a
 
