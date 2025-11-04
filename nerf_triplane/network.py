@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -199,6 +200,7 @@ class NeRFNetwork(NeRFRenderer):
                  # Training parameters
                  torso=False,
                  train_camera=False,
+                 unc_loss=1,
 
                  # Enhanced audio encoder parameters
                  use_enhanced_encoder=False,
@@ -207,6 +209,15 @@ class NeRFNetwork(NeRFRenderer):
                  foundation_model_type='whisper',
                  use_contrastive=False,
                  freeze_audio_backbone=True,
+
+                 # Dual audio encoder parameters
+                 use_dual_encoder=False,
+                 dual_encoder_fusion='cross_attention',
+                 
+                 # Sync loss parameters
+                 use_sync_loss=False,
+                 syncnet_checkpoint='',
+                 sync_loss_weight=1.0,
 
                  # Emotion recognition parameters
                  use_emotion=False,
@@ -233,6 +244,7 @@ class NeRFNetwork(NeRFRenderer):
 
             torso: Train torso (fix head and train torso)
             train_camera: Optimize camera pose during training
+            unc_loss: Use uncertainty loss (0=off, 1=on)
 
             use_enhanced_encoder: Use enhanced foundation model encoders
             enhanced_encoder_type: Type of enhanced encoder
@@ -269,6 +281,7 @@ class NeRFNetwork(NeRFRenderer):
                 # Training
                 self.torso = torso
                 self.train_camera = train_camera
+                self.unc_loss = unc_loss
                 self.ind_num = 20000  # Default from main.py
 
                 # Test mode (set to False for training)
@@ -290,6 +303,7 @@ class NeRFNetwork(NeRFRenderer):
         self.individual_dim_torso = individual_dim_torso
         self.torso = torso
         self.train_camera = train_camera
+        self.unc_loss = unc_loss
 
         # Enhanced encoder parameters
         self.use_enhanced_encoder = use_enhanced_encoder
@@ -298,6 +312,15 @@ class NeRFNetwork(NeRFRenderer):
         self.foundation_model_type = foundation_model_type
         self.use_contrastive = use_contrastive
         self.freeze_audio_backbone = freeze_audio_backbone
+
+        # Dual encoder parameters
+        self.use_dual_encoder = use_dual_encoder
+        self.dual_encoder_fusion = dual_encoder_fusion
+        
+        # Sync loss parameters
+        self.use_sync_loss = use_sync_loss
+        self.syncnet_checkpoint = syncnet_checkpoint
+        self.sync_loss_weight = sync_loss_weight
 
         # Emotion parameters
         self.use_emotion = use_emotion
@@ -310,6 +333,9 @@ class NeRFNetwork(NeRFRenderer):
             self.audio_in_dim = 44
         elif 'deepspeech' in self.asr_model:
             self.audio_in_dim = 29
+        elif 'wav2vec2' in self.asr_model or 'avhubert' in self.asr_model:
+            # Wav2Vec2 and AV-HuBERT output 1024-dim features
+            self.audio_in_dim = 1024
         elif 'hubert' in self.asr_model:
             self.audio_in_dim = 1024
         elif self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
@@ -332,70 +358,106 @@ class NeRFNetwork(NeRFRenderer):
         if self.att > 0:
             self.audio_att_net = AudioAttNet(self.audio_dim)
 
+        # Initialize sync loss if enabled
+        self._init_sync_loss()
+
         # Initialize emotion module if enabled
         self._init_emotion_module()
+        
+        # Initialize core NeRF components (must be after emotion module)
+        self._init_core_nerf_components()
 
 
     def _init_audio_encoder(self):
         """Initialize the appropriate audio encoder."""
-        if self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
-            print(f"[INFO] Using enhanced audio encoder: {self.enhanced_encoder_type}")
-
-            if self.enhanced_encoder_type == 'hybrid':
-                # Hybrid encoder combines LRS2 + foundation models
-                self.enhanced_audio_encoder = HybridAudioEncoder(
-                    use_lrs2=True,
-                    use_foundation=True,
-                    foundation_type=self.foundation_model_type,
-                    output_dim=self.audio_in_dim
-                )
-            else:
-                # Pure foundation model encoder
-                self.enhanced_audio_encoder = EnhancedAudioEncoder(
-                    encoder_type=self.enhanced_encoder_type,
-                    output_dim=self.audio_in_dim,
-                    use_prosody=self.use_prosody,
-                    use_contrastive=self.use_contrastive,
-                    freeze_backbone=self.freeze_audio_backbone
-                )
-
-            # Use enhanced AudioNet for processing
-            if self.asr_model == 'ave':
-                self.audio_net = FoundationModelAudioNetAVE(self.audio_in_dim, self.audio_dim)
-            else:
-                self.audio_net = FoundationModelAudioNet(self.audio_in_dim, self.audio_dim)
-        else:
-            # Use original AudioNet
-            if self.asr_model == 'ave':
-                self.audio_net = AudioNet_ave(self.audio_in_dim, self.audio_dim)
-            else:
-                self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim)
-
-
-    def _init_emotion_module(self):
-        """Initialize emotion recognition module if enabled."""
-        if not (self.use_emotion and EMOTION_MODULES_AVAILABLE):
-            return
-
-        print(f"[INFO] Initializing emotion recognition: {self.emotion_model}")
-
-        self.emotion_module = EmotionAwareNeRFModule(
-            emotion_model=self.emotion_model,
-            emotion_dim=64,
-            emotion_strength=self.emotion_strength,
-            use_emotion_conditioning=True
-        )
-
-        # Load emotion checkpoint if provided
-        if self.emotion_checkpoint and os.path.exists(self.emotion_checkpoint):
+        # Check if using dual encoder architecture
+        if self.use_dual_encoder:
+            print(f"[INFO] Using dual audio encoder architecture")
             try:
-                checkpoint = torch.load(self.emotion_checkpoint, map_location='cpu')
-                self.emotion_module.load_state_dict(checkpoint['model_state_dict'], strict=False)
-                print(f"[INFO] Loaded emotion checkpoint from {self.emotion_checkpoint}")
-            except Exception as e:
-                print(f"[WARN] Could not load emotion checkpoint: {e}")
+                from .dual_audio_encoder import DualAudioEncoder
+                
+                # Determine sync input type based on ASR model
+                sync_input_type = 'mel' if self.asr_model == 'ave' else 'mel'
+                
+                self.dual_audio_encoder = DualAudioEncoder(
+                    content_input_dim=self.audio_in_dim,  # From Wav2Vec2/AV-HuBERT
+                    content_output_dim=self.audio_dim,
+                    sync_input_type=sync_input_type,
+                    sync_output_dim=self.audio_dim,
+                    fusion_mode=self.dual_encoder_fusion,
+                    final_output_dim=self.audio_dim
+                )
+                print(f"[INFO] Dual encoder initialized with fusion mode: {self.dual_encoder_fusion}")
+            except ImportError as e:
+                print(f"[WARN] Could not import DualAudioEncoder: {e}")
+                print(f"[INFO] Falling back to single encoder")
+                self.use_dual_encoder = False
+        
+        if not self.use_dual_encoder:
+            # Single encoder path (original behavior)
+            if self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
+                print(f"[INFO] Using enhanced audio encoder: {self.enhanced_encoder_type}")
 
-        # DYNAMIC PART
+                if self.enhanced_encoder_type == 'hybrid':
+                    # Hybrid encoder combines LRS2 + foundation models
+                    self.enhanced_audio_encoder = HybridAudioEncoder(
+                        use_lrs2=True,
+                        use_foundation=True,
+                        foundation_type=self.foundation_model_type,
+                        output_dim=self.audio_in_dim
+                    )
+                else:
+                    # Pure foundation model encoder
+                    self.enhanced_audio_encoder = EnhancedAudioEncoder(
+                        encoder_type=self.enhanced_encoder_type,
+                        output_dim=self.audio_in_dim,
+                        use_prosody=self.use_prosody,
+                        use_contrastive=self.use_contrastive,
+                        freeze_backbone=self.freeze_audio_backbone
+                    )
+
+                # Use enhanced AudioNet for processing
+                if self.asr_model == 'ave':
+                    self.audio_net = FoundationModelAudioNetAVE(self.audio_in_dim, self.audio_dim)
+                else:
+                    self.audio_net = FoundationModelAudioNet(self.audio_in_dim, self.audio_dim)
+            else:
+                # Use original AudioNet
+                if self.asr_model == 'ave':
+                    self.audio_net = AudioNet_ave(self.audio_in_dim, self.audio_dim)
+                else:
+                    self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim)
+    
+    def _init_sync_loss(self):
+        """Initialize multi-scale sync loss if enabled."""
+        if not self.use_sync_loss:
+            return
+        
+        print(f"[INFO] Initializing multi-scale sync loss")
+        try:
+            from .sync_loss import MultiScaleSyncLoss
+            
+            self.sync_loss_module = MultiScaleSyncLoss(
+                syncnet_checkpoint=self.syncnet_checkpoint if self.syncnet_checkpoint else None,
+                use_syncnet=True,
+                use_lse_c=True,
+                use_lse_d=True,
+                loss_weights={
+                    'syncnet': self.sync_loss_weight,
+                    'lse_c': self.sync_loss_weight * 0.5,
+                    'lse_d': self.sync_loss_weight * 0.3
+                }
+            )
+            print(f"[INFO] Multi-scale sync loss initialized")
+        except ImportError as e:
+            print(f"[WARN] Could not import MultiScaleSyncLoss: {e}")
+            print(f"[INFO] Sync loss disabled")
+            self.use_sync_loss = False
+
+
+    def _init_core_nerf_components(self):
+        """Initialize core NeRF network components (encoders, MLPs, etc.)."""
+        # DYNAMIC PART - Tri-plane encoders
         self.num_levels = 12
         self.level_dim = 1
         self.encoder_xy, self.in_dim_xy = get_encoder('hashgrid', input_dim=2, num_levels=self.num_levels, level_dim=self.level_dim, base_resolution=64, log2_hashmap_size=14, desired_resolution=512 * self.bound)
@@ -408,17 +470,18 @@ class NeRFNetwork(NeRFRenderer):
         self.num_layers = 3
         self.hidden_dim = 64
         self.geo_feat_dim = 64
-        if self.opt.au45:
+        # Note: Using instance attributes instead of self.opt
+        if self.au45:
             self.eye_att_net = MLP(self.in_dim, 1, 16, 2)
             self.eye_dim = 1 if self.exp_eye else 0
         else:
-            if self.opt.bs_area == "upper":
+            if self.bs_area == "upper":
                 self.eye_att_net = MLP(self.in_dim, 7, 64, 2)
                 self.eye_dim = 7 if self.exp_eye else 0
-            elif self.opt.bs_area == "single":
+            elif self.bs_area == "single":
                 self.eye_att_net = MLP(self.in_dim, 4, 64, 2)
                 self.eye_dim = 4 if self.exp_eye else 0
-            elif self.opt.bs_area == "eye":
+            elif self.bs_area == "eye":
                 self.eye_att_net = MLP(self.in_dim, 2, 64, 2)
                 self.eye_dim = 2 if self.exp_eye else 0
         self.sigma_net = MLP(self.in_dim + self.audio_dim + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers)
@@ -446,6 +509,29 @@ class NeRFNetwork(NeRFRenderer):
             # torso color network
             self.torso_encoder, self.torso_in_dim = get_encoder('tiledgrid', input_dim=2, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=16, desired_resolution=2048)
             self.torso_net = MLP(self.torso_in_dim + self.torso_deform_in_dim + self.anchor_in_dim + self.individual_dim_torso, 4, 32, 3)
+    
+    def _init_emotion_module(self):
+        """Initialize emotion recognition module if enabled."""
+        if not (self.use_emotion and EMOTION_MODULES_AVAILABLE):
+            return
+
+        print(f"[INFO] Initializing emotion recognition: {self.emotion_model}")
+
+        self.emotion_module = EmotionAwareNeRFModule(
+            emotion_model=self.emotion_model,
+            emotion_dim=64,
+            emotion_strength=self.emotion_strength,
+            use_emotion_conditioning=True
+        )
+
+        # Load emotion checkpoint if provided
+        if self.emotion_checkpoint and os.path.exists(self.emotion_checkpoint):
+            try:
+                checkpoint = torch.load(self.emotion_checkpoint, map_location='cpu')
+                self.emotion_module.load_state_dict(checkpoint['model_state_dict'], strict=False)
+                print(f"[INFO] Loaded emotion checkpoint from {self.emotion_checkpoint}")
+            except Exception as e:
+                print(f"[WARN] Could not load emotion checkpoint: {e}")
 
 
     def forward_torso(self, x, poses, c=None):

@@ -381,3 +381,8 @@ echo "=========================================="
 echo "✅ ALL COMMANDS LISTED ABOVE"
 echo "Copy and run any command as needed!"
 echo "=========================================="
+
+
+
+#
+/mnt/2T/nhanhuynh/project/InsTaG/OpenFace/build/bin/FeatureExtraction -fdir /mnt/2T/nhanhuynh/project/SynthFace/data/May/May_upscaled.mp4 -out_dir /mnt/2T/nhanhuynh/project/SynthFace/data/May/result_OF

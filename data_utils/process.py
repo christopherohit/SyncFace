@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import tqdm
 import json
@@ -9,6 +10,7 @@ import torch
 import torch.nn.functional as F
 import face_alignment
 from face_tracking.util import euler2rot
+from moviepy.editor import VideoFileClip
 
 
 def extract_audio(path, out_path, sample_rate=16000):
@@ -17,6 +19,7 @@ def extract_audio(path, out_path, sample_rate=16000):
     cmd = f'ffmpeg -i {path} -f wav -ar {sample_rate} {out_path}'
     os.system(cmd)
     print(f'[INFO] ===== extracted audio =====')
+
 
 def extract_audio_features(path, mode='ave'):
 
@@ -29,7 +32,70 @@ def extract_audio_features(path, mode='ave'):
     elif mode == 'hubert':
         cmd = f'python data_utils/hubert.py --wav {path}' # save to data/<name>_hu.npy
         os.system(cmd)
+    elif mode == 'wav2vec2':
+        cmd = f'python data_utils/avhubert_wav2vec2.py --wav {path} --model wav2vec2' # save to data/<name>_w2v2.npy
+        os.system(cmd)
+    elif mode == 'avhubert':
+        cmd = f'python data_utils/avhubert_wav2vec2.py --wav {path} --model avhubert' # save to data/<name>_avhub.npy
+        os.system(cmd)
     print(f'[INFO] ===== extracted audio labels =====')
+
+
+def upscale_video(path, out_path, model_path):
+    print(f'[INFO] ===== upscale video from {path} to {out_path} =====')
+    interpolate = True # {True, False}
+    interpolate_factor = 2
+    scene_detect_method = "pyscenedetect" # {pyscenedetect, none}
+    scene_detect_sensitivity = "7.5" # {0 - 9.9} lower is more sensative
+    backend = "pytorch" # {pytorch, tensorrt}
+    interpolate_model = "rife4.25.pkl" # {rife4.25.pkl, rife4.25.pth}
+    upscale = False # {True, False}
+    upscale_model = "4xNomos8k_span_otf_strong.pth" # {4xNomos8k_span_otf_strong.pth, 4xNomos8k_span_otf_medium.pth, 4xNomos8k_span_otf_weak.pth}
+    video_encoder = "libx264" # {libx264,libx265,vp9,av1,prores,ffv1,x264_vulkan,x264_nvenc,x265_nvenc}
+    audio_encoder = "copy_audio" # {aac,libmp3lame,opus,copy_audio}
+    subtitle_encoder = "copy_subtitle" # {srt,ass,webvtt,copy_subtitle}
+
+
+    def download_model(model: str):
+        os.system(f"wget https://github.com/TNTwise/real-video-enhancer-models/releases/download/models/{model} -O {os.path.join(model_path, model)}")
+
+    sys.path.append(os.path.join('data_utils', 'real-video-enhancer'))
+    if interpolate:
+        if interpolate_model not in os.listdir(model_path):
+            download_model(interpolate_model)
+        else:
+            print(f'[INFO] ===== Interpolate model {interpolate_model} already exists =====')
+    if upscale:
+        if upscale_model not in os.listdir(model_path):
+            download_model(upscale_model)
+        else:
+            print(f'[INFO] ===== Upscale model {upscale_model} already exists =====')
+
+    cmd = (('python3 data_utils/real-video-enhancer/backend/rve-backend.py' if backend == "pytorch" else './python/bin/python3 data_utils/real-video-enhancer/backend/rve-backend.py')
+               + f' -i "{path}"'
+               + f' -o "{out_path}"'
+               + f' -b {backend} '
+               + f' --video_encoder_preset {video_encoder}'
+               + f' --audio_encoder_preset {audio_encoder}'
+               + f' --subtitle_encoder_preset {subtitle_encoder}')
+    if upscale and upscale_model:
+        cmd += f" --upscale_model data_utils/real-video-enhancer/models/{upscale_model} "
+    if interpolate and interpolate_model:
+        cmd += f" --interpolate_model data_utils/real-video-enhancer/models/{interpolate_model} "
+        cmd += f" --interpolate_factor {interpolate_factor} "
+        cmd += f" --scene_detect_method {scene_detect_method} "
+        cmd += f" --scene_detect_threshold {scene_detect_sensitivity} "
+        
+    os.system(cmd)
+    print(f'[INFO] ===== Done upscale video =====')
+
+    # print(f'[INFO] ===== Resize video to 512x512 =====')
+    # # get video duration
+    
+    # cmd = f'ffmpeg -i {out_path} -vf scale=512:512 {out_path}'
+    # os.system(cmd)
+    print(f'[INFO] ===== Done resize video to 512x512 =====')
+    
 
 
 def extract_images(path, out_path, fps=25):
@@ -419,13 +485,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str, help="path to video file")
     parser.add_argument('--task', type=int, default=-1, help="-1 means all")
-    parser.add_argument('--asr', type=str, default='ave', help="ave, hubert or deepspeech")
+    parser.add_argument('--asr', type=str, default='ave', help="ave, hubert, deepspeech, wav2vec2, or avhubert")
+    parser.add_argument('--upscale', type=bool, default=True, help="True or False")
 
 
     opt = parser.parse_args()
 
     base_dir = os.path.dirname(opt.path)
-    
+
+    upscale_video_filename= f"{os.path.basename(opt.path).replace('.mp4', '')}_upscaled.mp4"
+    upscale_video_path = os.path.join(base_dir, upscale_video_filename)
     wav_path = os.path.join(base_dir, 'aud.wav')
     ori_imgs_dir = os.path.join(base_dir, 'ori_imgs')
     parsing_dir = os.path.join(base_dir, 'parsing')
@@ -433,6 +502,7 @@ if __name__ == '__main__':
     torso_imgs_dir = os.path.join(base_dir, 'torso_imgs')
     mask_imgs_dir = os.path.join(base_dir, 'face_mask')
     flow_dir = os.path.join(base_dir, 'flow_result')
+    models_upscale_dir = os.path.join('data_utils', 'real-video-enhancer','models')
 
 
     os.makedirs(ori_imgs_dir, exist_ok=True)
@@ -441,46 +511,64 @@ if __name__ == '__main__':
     os.makedirs(torso_imgs_dir, exist_ok=True)
     os.makedirs(mask_imgs_dir, exist_ok=True)
     os.makedirs(flow_dir, exist_ok=True)
+    os.makedirs(models_upscale_dir, exist_ok=True)
 
+
+
+
+    # Upscale video
+    if opt.task == -1 or opt.task == 1:
+        try:
+            if opt.upscale:
+                if os.path.isfile(upscale_video_path):
+                    print(f'[INFO] ===== Upscale video {upscale_video_path} already exists =====')
+                else:
+                    upscale_video(opt.path, upscale_video_path, models_upscale_dir)
+            else:
+                raise Exception("Upscale video is not supported")
+        except Exception as e:
+            print(f'[ERROR] ===== failed to upscale video: {e} =====')
+            print(f'[INFO] ===== using original video =====')
+            upscale_video_path = opt.path
 
     # extract audio
-    if opt.task == -1 or opt.task == 1:
-        extract_audio(opt.path, wav_path)
+    if opt.task == -1 or opt.task == 2:
+        extract_audio(upscale_video_path, wav_path)
         extract_audio_features(wav_path, mode=opt.asr)
 
     # extract images
-    if opt.task == -1 or opt.task == 2:
-        extract_images(opt.path, ori_imgs_dir)
+    if opt.task == -1 or opt.task == 3:
+        extract_images(upscale_video_path, ori_imgs_dir)
 
     # face parsing
-    if opt.task == -1 or opt.task == 3:
+    if opt.task == -1 or opt.task == 4:
         extract_semantics(ori_imgs_dir, parsing_dir)
 
     # extract bg
-    if opt.task == -1 or opt.task == 4:
+    if opt.task == -1 or opt.task == 5:
         extract_background(base_dir, ori_imgs_dir)
 
     # extract torso images and gt_images
-    if opt.task == -1 or opt.task == 5:
+    if opt.task == -1 or opt.task == 6:
         extract_torso_and_gt(base_dir, ori_imgs_dir)
 
     # extract face landmarks
-    if opt.task == -1 or opt.task == 6:
+    if opt.task == -1 or opt.task == 7:
         extract_landmarks(ori_imgs_dir)
 
     # face tracking
-    if opt.task == -1 or opt.task == 7:
+    if opt.task == -1 or opt.task == 8:
         face_tracking(ori_imgs_dir)
 
     # extract flow & pose optimization
-    if opt.task == -1 or opt.task == 8:
+    if opt.task == -1 or opt.task == 9:
         extract_flow(base_dir, ori_imgs_dir, mask_imgs_dir, flow_dir)
 
     # extract blendshape
-    if opt.task == -1 or opt.task == 9:
+    if opt.task == -1 or opt.task == 10:
         extract_blendshape(base_dir)
 
     # save transforms.json
-    if opt.task == -1 or opt.task == 10:
+    if opt.task == -1 or opt.task == 11:
         save_transforms(base_dir, ori_imgs_dir)
 

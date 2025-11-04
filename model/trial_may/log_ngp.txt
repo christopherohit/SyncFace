@@ -1,0 +1,163 @@
+[INFO] Trainer: ngp | 2025-11-04_13-58-07 | cuda | fp16 | model/trial_may
+[INFO] #parameters: 765621
+[INFO] Loading latest checkpoint ...
+[WARN] No checkpoint found, model randomly initialized.
+==> Start Training Epoch 1, lr=0.001000 ...
+loss=0.0168
+==> Finished Epoch 1.
+++> Evaluate at epoch 1 ...
+PSNR = 31.444517
+LPIPS (alex) = 0.109795
+LMD (fan) = 3.752118
+++> Evaluate epoch 1 Finished.
+==> Start Training Epoch 2, lr=0.000962 ...
+loss=0.0132
+==> Finished Epoch 2.
+++> Evaluate at epoch 2 ...
+PSNR = 32.294491
+LPIPS (alex) = 0.097681
+LMD (fan) = 3.262210
+++> Evaluate epoch 2 Finished.
+==> Start Training Epoch 3, lr=0.000926 ...
+loss=0.0128
+==> Finished Epoch 3.
+++> Evaluate at epoch 3 ...
+PSNR = 32.499189
+LPIPS (alex) = 0.095482
+LMD (fan) = 3.132391
+++> Evaluate epoch 3 Finished.
+==> Start Training Epoch 4, lr=0.000892 ...
+loss=0.0125
+==> Finished Epoch 4.
+++> Evaluate at epoch 4 ...
+PSNR = 32.606575
+LPIPS (alex) = 0.092834
+LMD (fan) = 3.089945
+++> Evaluate epoch 4 Finished.
+==> Start Training Epoch 5, lr=0.000858 ...
+loss=0.0124
+==> Finished Epoch 5.
+++> Evaluate at epoch 5 ...
+PSNR = 32.838163
+LPIPS (alex) = 0.090823
+LMD (fan) = 3.125994
+++> Evaluate epoch 5 Finished.
+==> Start Training Epoch 6, lr=0.000826 ...
+loss=0.0122
+==> Finished Epoch 6.
+++> Evaluate at epoch 6 ...
+PSNR = 32.781249
+LPIPS (alex) = 0.089641
+LMD (fan) = 3.108405
+++> Evaluate epoch 6 Finished.
+==> Start Training Epoch 7, lr=0.000795 ...
+loss=0.0120
+==> Finished Epoch 7.
+++> Evaluate at epoch 7 ...
+PSNR = 32.733152
+LPIPS (alex) = 0.088762
+LMD (fan) = 3.082177
+++> Evaluate epoch 7 Finished.
+==> Start Training Epoch 8, lr=0.000765 ...
+loss=0.0118
+==> Finished Epoch 8.
+++> Evaluate at epoch 8 ...
+PSNR = 32.809855
+LPIPS (alex) = 0.087865
+LMD (fan) = 3.078998
+++> Evaluate epoch 8 Finished.
+==> Start Training Epoch 9, lr=0.000736 ...
+loss=0.0116
+==> Finished Epoch 9.
+++> Evaluate at epoch 9 ...
+PSNR = 32.676671
+LPIPS (alex) = 0.086581
+LMD (fan) = 3.087551
+++> Evaluate epoch 9 Finished.
+==> Start Training Epoch 10, lr=0.000709 ...
+loss=0.0115
+==> Finished Epoch 10.
+++> Evaluate at epoch 10 ...
+PSNR = 32.629422
+LPIPS (alex) = 0.085182
+LMD (fan) = 3.079338
+++> Evaluate epoch 10 Finished.
+==> Start Training Epoch 11, lr=0.000682 ...
+loss=0.0113
+==> Finished Epoch 11.
+++> Evaluate at epoch 11 ...
+PSNR = 32.583492
+LPIPS (alex) = 0.085128
+LMD (fan) = 3.105838
+++> Evaluate epoch 11 Finished.
+==> Start Training Epoch 12, lr=0.000656 ...
+loss=0.0112
+==> Finished Epoch 12.
+++> Evaluate at epoch 12 ...
+PSNR = 32.427432
+LPIPS (alex) = 0.084867
+LMD (fan) = 3.075216
+++> Evaluate epoch 12 Finished.
+==> Start Training Epoch 13, lr=0.000632 ...
+loss=0.0110
+==> Finished Epoch 13.
+++> Evaluate at epoch 13 ...
+PSNR = 32.284534
+LPIPS (alex) = 0.083741
+LMD (fan) = 3.047300
+++> Evaluate epoch 13 Finished.
+==> Start Training Epoch 14, lr=0.000608 ...
+loss=0.0109
+==> Finished Epoch 14.
+++> Evaluate at epoch 14 ...
+PSNR = 32.291345
+LPIPS (alex) = 0.083935
+LMD (fan) = 3.023809
+++> Evaluate epoch 14 Finished.
+==> Start Training Epoch 15, lr=0.000585 ...
+loss=0.0108
+==> Finished Epoch 15.
+++> Evaluate at epoch 15 ...
+PSNR = 32.288017
+LPIPS (alex) = 0.082763
+LMD (fan) = 3.016361
+++> Evaluate epoch 15 Finished.
+==> Start Training Epoch 16, lr=0.000563 ...
+loss=0.0107
+==> Finished Epoch 16.
+++> Evaluate at epoch 16 ...
+PSNR = 32.276082
+LPIPS (alex) = 0.082225
+LMD (fan) = 3.054780
+++> Evaluate epoch 16 Finished.
+==> Start Training Epoch 17, lr=0.000542 ...
+loss=0.0106
+==> Finished Epoch 17.
+++> Evaluate at epoch 17 ...
+PSNR = 32.238247
+LPIPS (alex) = 0.081715
+LMD (fan) = 3.065512
+++> Evaluate epoch 17 Finished.
+==> Start Training Epoch 18, lr=0.000522 ...
+loss=0.0105
+==> Finished Epoch 18.
+++> Evaluate at epoch 18 ...
+PSNR = 32.190320
+LPIPS (alex) = 0.081185
+LMD (fan) = 3.080051
+++> Evaluate epoch 18 Finished.
+==> Start Training Epoch 19, lr=0.000502 ...
+loss=0.0104
+==> Finished Epoch 19.
+++> Evaluate at epoch 19 ...
+PSNR = 32.175908
+LPIPS (alex) = 0.080819
+LMD (fan) = 3.069391
+++> Evaluate epoch 19 Finished.
+++> Evaluate at epoch 19 ...
+PSNR = 31.242966
+LPIPS (alex) = 0.081273
+LMD (fan) = 2.982831
+++> Evaluate epoch 19 Finished.
+==> Start Test, save results to model/trial_may/results
+==> Finished Test.

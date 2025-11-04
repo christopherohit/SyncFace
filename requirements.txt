@@ -41,3 +41,12 @@ praat-parselmouth>=0.4.3  # For prosody analysis (optional)
 # - SpeechT5 (microsoft/speecht5_*): Speech representation learning
 # - EnCodec (facebook/encodec_*): High-quality audio compression features
 # No additional packages needed if transformers>=4.36.0 is installed
+
+# Improved Lip-Sync Dependencies
+# AV-HuBERT and Wav2Vec2 for phoneme-rich features
+fairseq>=0.12.2  # For AV-HuBERT (optional, only if using avhubert model)
+# Wav2Vec2 is supported via transformers (already installed)
+
+# Multi-Scale Sync Loss Dependencies
+# Uses frozen SyncNet from Wav2Lip for contrastive audio-video alignment
+# No additional packages needed - implemented using PyTorch

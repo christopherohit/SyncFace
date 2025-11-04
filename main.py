@@ -32,9 +32,9 @@ def setup_torch_precision():
     # torch.autograd.set_detect_anomaly(True)  # Enable for debugging NaN gradients
 
     # Disable tf32 for better numerical accuracy on RTX30xx GPUs
-try:
-    torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
     except AttributeError:
         print('[INFO] This PyTorch version does not support tf32 settings.')
 
@@ -197,6 +197,25 @@ def create_argument_parser():
                        help='Use audio class embedding instead of logits')
     parser.add_argument('--portrait', action='store_true',
                        help='Render only face (no background)')
+    
+    # ==========================================================================
+    # DUAL AUDIO ENCODER OPTIONS
+    # ==========================================================================
+    parser.add_argument('--use_dual_encoder', action='store_true',
+                       help='Use dual audio encoder (content + sync branches)')
+    parser.add_argument('--dual_encoder_fusion', type=str, default='cross_attention',
+                       choices=['concat', 'add', 'cross_attention', 'gated'],
+                       help='Fusion mode for dual encoder')
+    
+    # ==========================================================================
+    # SYNC LOSS OPTIONS
+    # ==========================================================================
+    parser.add_argument('--use_sync_loss', action='store_true',
+                       help='Use multi-scale sync loss (SyncNet, LSE-C, LSE-D)')
+    parser.add_argument('--syncnet_checkpoint', type=str, default='',
+                       help='Path to pretrained SyncNet checkpoint')
+    parser.add_argument('--sync_loss_weight', type=float, default=1.0,
+                       help='Weight for sync loss')
 
     # ==========================================================================
     # INDIVIDUAL CODE OPTIONS
@@ -375,6 +394,7 @@ def create_model_and_criterion(opt):
         # Training parameters
         torso=getattr(opt, 'torso', False),
         train_camera=getattr(opt, 'train_camera', False),
+        unc_loss=getattr(opt, 'unc_loss', 1),
 
         # Enhanced audio encoder parameters
         use_enhanced_encoder=getattr(opt, 'use_enhanced_encoder', False),
@@ -383,6 +403,15 @@ def create_model_and_criterion(opt):
         foundation_model_type=getattr(opt, 'foundation_model_type', 'whisper'),
         use_contrastive=getattr(opt, 'use_contrastive', False),
         freeze_audio_backbone=getattr(opt, 'freeze_audio_backbone', True),
+
+        # Dual audio encoder parameters
+        use_dual_encoder=getattr(opt, 'use_dual_encoder', False),
+        dual_encoder_fusion=getattr(opt, 'dual_encoder_fusion', 'cross_attention'),
+        
+        # Sync loss parameters
+        use_sync_loss=getattr(opt, 'use_sync_loss', False),
+        syncnet_checkpoint=getattr(opt, 'syncnet_checkpoint', ''),
+        sync_loss_weight=getattr(opt, 'sync_loss_weight', 1.0),
 
         # Emotion recognition parameters
         use_emotion=getattr(opt, 'use_emotion', False),
@@ -414,10 +443,10 @@ def run_test_mode(opt, model, criterion, device):
     print("=" * 60)
 
     # Setup metrics
-        if opt.gui:
+    if opt.gui:
         metrics = []  # Disable metrics for faster GUI initialization
-        else:
-            metrics = [PSNRMeter(), LPIPSMeter(device=device), LMDMeter(backend='fan')]
+    else:
+        metrics = [PSNRMeter(), LPIPSMeter(device=device), LMDMeter(backend='fan')]
 
     # Create trainer
     trainer = Trainer('ngp', opt, model, device=device,
@@ -425,32 +454,32 @@ def run_test_mode(opt, model, criterion, device):
                      fp16=opt.fp16, metrics=metrics, use_checkpoint=opt.ckpt)
 
     # Load audio features for test dataset
-        if opt.test_train:
+    if opt.test_train:
         # Test on training dataset
-            test_set = NeRFDataset(opt, device=device, type='train')
-            test_set.training = False 
-            test_set.num_rays = -1
-            test_loader = test_set.dataloader()
-        else:
+        test_set = NeRFDataset(opt, device=device, type='train')
+        test_set.training = False
+        test_set.num_rays = -1
+        test_loader = test_set.dataloader()
+    else:
         # Test on test dataset
-            test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
+        test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
 
     # Update model with audio features
-        model.aud_features = test_loader._data.auds
-        model.eye_areas = test_loader._data.eye_area
+    model.aud_features = test_loader._data.auds
+    model.eye_areas = test_loader._data.eye_area
 
-        if opt.gui:
+    if opt.gui:
         # Launch interactive GUI
-            from nerf_triplane.gui import NeRFGUI
-            with NeRFGUI(opt, trainer, test_loader) as gui:
-                gui.render()
-        else:
+        from nerf_triplane.gui import NeRFGUI
+        with NeRFGUI(opt, trainer, test_loader) as gui:
+            gui.render()
+    else:
         # Run inference and save video
-            trainer.test(test_loader)
+        trainer.test(test_loader)
 
         # Run evaluation if ground truth available
-            if test_loader.has_gt:
-                trainer.evaluate(test_loader)
+        if test_loader.has_gt:
+            trainer.evaluate(test_loader)
 
 
 def run_training_mode(opt, model, criterion, device):
@@ -467,7 +496,7 @@ def run_training_mode(opt, model, criterion, device):
     )
 
     # Create dataset and dataloader
-        train_loader = NeRFDataset(opt, device=device, type='train').dataloader()
+    train_loader = NeRFDataset(opt, device=device, type='train').dataloader()
 
     # Validate dataset size
     assert len(train_loader) < opt.ind_num, (
@@ -476,23 +505,23 @@ def run_training_mode(opt, model, criterion, device):
     )
 
     # Update model with training data
-        model.aud_features = train_loader._data.auds
-        model.eye_area = train_loader._data.eye_area
-        model.poses = train_loader._data.poses
+    model.aud_features = train_loader._data.auds
+    model.eye_area = train_loader._data.eye_area
+    model.poses = train_loader._data.poses
 
     # Setup learning rate scheduler
-        if opt.finetune_lips:
+    if opt.finetune_lips:
         scheduler_func = lambda optimizer: optim.lr_scheduler.LambdaLR(
             optimizer, lambda iter: 0.05 ** (iter / opt.iters)
         )
-        else:
+    else:
         scheduler_func = lambda optimizer: optim.lr_scheduler.LambdaLR(
             optimizer, lambda iter: 0.5 ** (iter / opt.iters)
         )
 
     # Setup metrics and evaluation
     metrics = [PSNRMeter(), LPIPSMeter(device=device), LMDMeter(backend='fan')]
-        eval_interval = max(1, int(5000 / len(train_loader)))
+    eval_interval = max(1, int(5000 / len(train_loader)))
 
     # Create trainer
     trainer = Trainer(
@@ -506,33 +535,33 @@ def run_training_mode(opt, model, criterion, device):
 
     # Save options to workspace
     with open(os.path.join(opt.workspace, 'opt.txt'), 'w') as f:
-            f.write(str(opt))
+        f.write(str(opt))
 
-        if opt.gui:
+    if opt.gui:
         # Launch training GUI
         from nerf_triplane.gui import NeRFGUI
-            with NeRFGUI(opt, trainer, train_loader) as gui:
-                gui.render()
-        else:
+        with NeRFGUI(opt, trainer, train_loader) as gui:
+            gui.render()
+    else:
         # Run training
-            valid_loader = NeRFDataset(opt, device=device, type='val', downscale=1).dataloader()
-            max_epochs = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
+        valid_loader = NeRFDataset(opt, device=device, type='val', downscale=1).dataloader()
+        max_epochs = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
 
         print(f"[INFO] Training for {max_epochs} epochs ({opt.iters} total iterations)")
 
-            trainer.train(train_loader, valid_loader, max_epochs)
+        trainer.train(train_loader, valid_loader, max_epochs)
 
         # Cleanup memory
-            del train_loader, valid_loader
-            torch.cuda.empty_cache()
+        del train_loader, valid_loader
+        torch.cuda.empty_cache()
 
         # Run final test
-            test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
-            
-            if test_loader.has_gt:
+        test_loader = NeRFDataset(opt, device=device, type='test').dataloader()
+
+        if test_loader.has_gt:
             trainer.evaluate(test_loader)
 
-            trainer.test(test_loader)
+        trainer.test(test_loader)
 
 
 def main():

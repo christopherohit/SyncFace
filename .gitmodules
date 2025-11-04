@@ -1,0 +1,6 @@
+[submodule "data_utils/real-video-enhancer"]
+	path = data_utils/real-video-enhancer
+	url = https://github.com/christopherohit/REAL-Video-Enhancer.git
+[submodule "OpenFace"]
+	path = OpenFace
+	url = https://github.com/TadasBaltrusaitis/OpenFace.git

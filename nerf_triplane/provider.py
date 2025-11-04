@@ -166,6 +166,10 @@ class NeRFDataset:
                     aud_features = np.load(os.path.join(self.root_path, 'aud_ds.npy'))
                 # elif 'hubert_cn' in self.opt.asr_model:
                 #     aud_features = np.load(os.path.join(self.root_path, 'aud_hu_cn.npy'))
+                elif 'wav2vec2' in self.opt.asr_model:
+                    aud_features = np.load(os.path.join(self.root_path, 'aud_w2v2.npy'))
+                elif 'avhubert' in self.opt.asr_model:
+                    aud_features = np.load(os.path.join(self.root_path, 'aud_avhub.npy'))
                 elif 'hubert' in self.opt.asr_model:
                     aud_features = np.load(os.path.join(self.root_path, 'aud_hu.npy'))
                 elif self.opt.asr_model == 'ave':
@@ -251,7 +255,7 @@ class NeRFDataset:
         if self.opt.au45:
             import pandas as pd
             au_blink_info = pd.read_csv(os.path.join(self.root_path, 'au.csv'))
-            bs = au_blink_info[' AU45_r'].values
+            bs = au_blink_info['AU45_r'].values
         else:
             bs = np.load(os.path.join(self.root_path, 'bs.npy'))
             if self.opt.bs_area == "upper":
