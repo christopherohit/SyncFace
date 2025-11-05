@@ -84,3 +84,5 @@ __pycache__/*
 *.so
 
 data/*
+
+events.out.tfevents*
