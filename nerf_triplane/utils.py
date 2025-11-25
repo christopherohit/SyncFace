@@ -1024,9 +1024,8 @@ class Trainer(object):
 
             self.train_one_epoch(train_loader)
 
-            # Only save best checkpoint, no epoch checkpoints
-            # if self.workspace is not None and self.local_rank == 0:
-            #     self.save_checkpoint(full=True, best=False)
+            if self.workspace is not None and self.local_rank == 0:
+                self.save_checkpoint(full=True, best=False)
 
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)

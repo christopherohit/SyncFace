@@ -5,28 +5,6 @@ import torch.nn.functional as F
 from .encoding import get_encoder
 from .renderer import NeRFRenderer
 
-# Import enhanced audio encoder modules
-try:
-    from .enhanced_audio_encoder import EnhancedAudioEncoder
-    from .audio_encoder_adapter import (
-        HybridAudioEncoder, 
-        FoundationModelAudioNet, 
-        FoundationModelAudioNetAVE
-    )
-    ENHANCED_ENCODERS_AVAILABLE = True
-except ImportError:
-    ENHANCED_ENCODERS_AVAILABLE = False
-    print("[WARN] Enhanced audio encoders not available. Using original encoders only.")
-
-# Import emotion modules
-try:
-    from .emotion_module import EmotionRecognitionModule
-    from .emotion_integration import EmotionAwareNeRFModule
-    EMOTION_MODULES_AVAILABLE = True
-except ImportError:
-    EMOTION_MODULES_AVAILABLE = False
-    print("[WARN] Emotion modules not available. Emotion features disabled.")
-
 
 class Conv2d(nn.Module):
     def __init__(self, cin, cout, kernel_size, stride, padding, residual=False, leakyReLU=False, *args, **kwargs):
@@ -192,17 +170,6 @@ class NeRFNetwork(NeRFRenderer):
 
         # audio embedding
         self.emb = self.opt.emb
-        
-        # Check if using enhanced audio encoder
-        self.use_enhanced_encoder = getattr(opt, 'use_enhanced_encoder', False)
-        self.enhanced_encoder_type = getattr(opt, 'enhanced_encoder_type', 'whisper')  # whisper, speecht5, encodec, ensemble, hybrid
-        self.use_prosody = getattr(opt, 'use_prosody', True)
-        
-        # Check if using emotion recognition
-        self.use_emotion = getattr(opt, 'use_emotion', False)
-        self.emotion_model = getattr(opt, 'emotion_model', 'wav2vec2')
-        self.emotion_checkpoint = getattr(opt, 'emotion_checkpoint', '')
-        self.emotion_strength = getattr(opt, 'emotion_strength', 0.7)
 
         if 'esperanto' in self.opt.asr_model:
             self.audio_in_dim = 44
@@ -210,9 +177,6 @@ class NeRFNetwork(NeRFRenderer):
             self.audio_in_dim = 29
         elif 'hubert' in self.opt.asr_model:
             self.audio_in_dim = 1024
-        elif self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
-            # Enhanced encoders output 512-dim features by default
-            self.audio_in_dim = 512
         else:
             self.audio_in_dim = 32
             
@@ -221,63 +185,14 @@ class NeRFNetwork(NeRFRenderer):
 
         # audio network
         self.audio_dim = audio_dim
-        
-        # Use enhanced foundation model encoders if available and enabled
-        if self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
-            print(f"[INFO] Using enhanced audio encoder: {self.enhanced_encoder_type}")
-            
-            if self.enhanced_encoder_type == 'hybrid':
-                # Hybrid encoder combines LRS2 + foundation models
-                self.enhanced_audio_encoder = HybridAudioEncoder(
-                    use_lrs2=True,
-                    use_foundation=True,
-                    foundation_type=getattr(opt, 'foundation_model_type', 'whisper'),
-                    output_dim=self.audio_in_dim
-                )
-            else:
-                # Pure foundation model encoder
-                self.enhanced_audio_encoder = EnhancedAudioEncoder(
-                    encoder_type=self.enhanced_encoder_type,
-                    output_dim=self.audio_in_dim,
-                    use_prosody=self.use_prosody,
-                    use_contrastive=getattr(opt, 'use_contrastive', False),
-                    freeze_backbone=getattr(opt, 'freeze_audio_backbone', True)
-                )
-            
-            # Use enhanced AudioNet for processing
-            if self.opt.asr_model == 'ave':
-                self.audio_net = FoundationModelAudioNetAVE(self.audio_in_dim, self.audio_dim)
-            else:
-                self.audio_net = FoundationModelAudioNet(self.audio_in_dim, self.audio_dim)
+        if self.opt.asr_model == 'ave':
+            self.audio_net = AudioNet_ave(self.audio_in_dim, self.audio_dim)
         else:
-            # Use original AudioNet
-            if self.opt.asr_model == 'ave':
-                self.audio_net = AudioNet_ave(self.audio_in_dim, self.audio_dim)
-            else:
-                self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim)
+            self.audio_net = AudioNet(self.audio_in_dim, self.audio_dim)
 
         self.att = self.opt.att
         if self.att > 0:
             self.audio_att_net = AudioAttNet(self.audio_dim)
-        
-        # Initialize emotion module if enabled
-        if self.use_emotion and EMOTION_MODULES_AVAILABLE:
-            print(f"[INFO] Initializing emotion recognition: {self.emotion_model}")
-            self.emotion_module = EmotionAwareNeRFModule(
-                opt=self.opt,
-                emotion_model=self.emotion_model,
-                emotion_dim=64,
-                use_emotion_conditioning=True
-            )
-            
-            # Load emotion checkpoint if provided
-            if self.emotion_checkpoint and os.path.exists(self.emotion_checkpoint):
-                try:
-                    checkpoint = torch.load(self.emotion_checkpoint, map_location='cpu')
-                    self.emotion_module.load_state_dict(checkpoint['model_state_dict'], strict=False)
-                    print(f"[INFO] Loaded emotion checkpoint from {self.emotion_checkpoint}")
-                except Exception as e:
-                    print(f"[WARN] Could not load emotion checkpoint: {e}")
 
         # DYNAMIC PART
         self.num_levels = 12
@@ -402,20 +317,6 @@ class NeRFNetwork(NeRFRenderer):
 
         if self.att > 0:
             enc_a = self.audio_att_net(enc_a.unsqueeze(0)) # [1, 32]
-        
-        # Apply emotion conditioning if enabled
-        if self.use_emotion and hasattr(self, 'emotion_module'):
-            try:
-                # Extract emotion from audio features
-                # Note: This is a simplified version - you may need to pass raw audio
-                emotion_result = self.emotion_module(a.unsqueeze(0))
-                emotion_cond = emotion_result['emotion_cond']
-                
-                # Blend audio features with emotion conditioning
-                enc_a = enc_a + self.emotion_strength * emotion_cond[:, :enc_a.shape[-1]]
-            except Exception as e:
-                # Silently continue if emotion fails
-                pass
             
         return enc_a
 
@@ -522,18 +423,6 @@ class NeRFNetwork(NeRFRenderer):
             {'params': self.sigma_net.parameters(), 'lr': lr_net, 'weight_decay': wd},
             {'params': self.color_net.parameters(), 'lr': lr_net, 'weight_decay': wd}, 
         ]
-        
-        # Add enhanced encoder parameters if using enhanced encoders
-        if self.use_enhanced_encoder and ENHANCED_ENCODERS_AVAILABLE:
-            if hasattr(self, 'enhanced_audio_encoder'):
-                # Lower learning rate for pretrained foundation models
-                foundation_lr = lr_net * 0.1 if getattr(self.opt, 'freeze_audio_backbone', True) else lr_net
-                params.append({
-                    'params': self.enhanced_audio_encoder.parameters(), 
-                    'lr': foundation_lr, 
-                    'weight_decay': wd * 0.1  # Lower weight decay for foundation models
-                })
-        
         if self.att > 0:
             params.append({'params': self.audio_att_net.parameters(), 'lr': lr_net * 5, 'weight_decay': 0.0001})
         if self.emb:

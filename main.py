@@ -97,23 +97,6 @@ if __name__ == '__main__':
     parser.add_argument('--amb_dim', type=int, default=2, help="ambient dimension")
     parser.add_argument('--part', action='store_true', help="use partial training data (1/10)")
     parser.add_argument('--part2', action='store_true', help="use partial training data (first 15s)")
-    
-    ### Enhanced Audio Encoder options
-    parser.add_argument('--use_enhanced_encoder', action='store_true', help="use enhanced audio encoder with foundation models")
-    parser.add_argument('--enhanced_encoder_type', type=str, default='whisper', choices=['whisper', 'speecht5', 'encodec', 'ensemble', 'hybrid'], help="type of enhanced encoder")
-    parser.add_argument('--use_prosody', action='store_true', help="extract and use prosodic features (pitch, energy, rhythm)")
-    parser.add_argument('--use_contrastive', action='store_true', help="use CLIP-like contrastive audio-video alignment")
-    parser.add_argument('--freeze_audio_backbone', action='store_true', help="freeze pretrained foundation model weights")
-    parser.add_argument('--foundation_model_type', type=str, default='whisper', help="foundation model type for hybrid mode")
-    
-    ### Emotion Recognition options
-    parser.add_argument('--use_emotion', action='store_true', help="enable emotion-aware facial expressions")
-    parser.add_argument('--emotion_model', type=str, default='wav2vec2', choices=['wav2vec2', 'cnn', 'prosody'], help="emotion recognition model type")
-    parser.add_argument('--emotion_checkpoint', type=str, default='', help="path to trained emotion model checkpoint")
-    parser.add_argument('--emotion_dim', type=int, default=64, help="emotion embedding dimension")
-    parser.add_argument('--emotion_strength', type=float, default=0.7, help="emotion influence strength (0-1)")
-    parser.add_argument('--emotion_smoothing', type=str, default='ema', choices=['ema', 'conv'], help="temporal smoothing method")
-    parser.add_argument('--emotion_blend_mode', type=str, default='add', choices=['add', 'multiply', 'replace'], help="emotion blendshape blend mode")
 
     parser.add_argument('--train_camera', action='store_true', help="optimize camera pose")
     parser.add_argument('--smooth_path', action='store_true', help="brute-force smooth camera pose trajectory with a window size")

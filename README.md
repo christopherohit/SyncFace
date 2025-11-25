@@ -1,427 +1,234 @@
-# 🎭 SyncTalk Enhanced Audio Encoder
+# SyncTalk: The Devil😈 is in the Synchronization for Talking Head Synthesis [CVPR 2024]
 
-> **Upgrade your talking heads with foundation models for prosodic features, emotional context, and speaking style!**
 
----
+The official repository of the paper [SyncTalk: The Devil is in the Synchronization for Talking Head Synthesis](https://arxiv.org/abs/2311.17590)
 
-## 🌟 What's New?
+<p align='center'>
+  <b>
+    <a href="https://arxiv.org/abs/2311.17590">Paper</a>
+    | 
+    <a href="https://ziqiaopeng.github.io/synctalk/">Project Page</a>
+    |
+    <a href="https://github.com/ZiqiaoPeng/SyncTalk">Code</a> 
+  </b>
+</p> 
 
-The enhanced audio encoder transforms SyncTalk from a lip-sync-only system to a **fully expressive talking head generator** by adding:
+Colab notebook demonstration: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Egq0_ZK5sJAAawShxC0y4JRZQuVS2X-Z?usp=sharing)
 
-| Feature | Before | After |
-|---------|--------|-------|
-| 💋 **Lip Sync** | ✅ Excellent | ✅ Excellent |
-| 🎵 **Prosody** (pitch, rhythm, energy) | ❌ None | ✅ **Rich modeling** |
-| 😊 **Emotion** | ❌ Generic | ✅ **Natural expressions** |
-| 🎨 **Speaking Style** | ❌ One-size-fits-all | ✅ **Speaker-specific** |
-| 🌍 **Languages** | English only | 99+ languages |
+A short demo video can be found [here](./demo/short_demo.mp4).
 
----
+  <p align='center'>  
+    <img src='assets/image/synctalk.png' width='1000'/>
+  </p>
 
-## 🚀 Quick Start (60 seconds)
+  The proposed **SyncTalk** synthesizes synchronized talking head videos, employing tri-plane hash representations to maintain subject identity. It can generate synchronized lip movements, facial expressions, and stable head poses, and restores hair details to create high-resolution videos.
+  
+<div align="center">
+  
+  **🔥Try using [SyncTalk_2D](https://github.com/ZiqiaoPeng/SyncTalk_2D) to achieve faster and better visual quality.🔥**
+  
+  </div>
+
+## 🔥🔥🔥 News
+- [2023-11-30] Update arXiv paper.
+- [2024-03-04] The code and pre-trained model are released.
+- [2024-03-22] The Google Colab notebook is released.
+- [2024-04-14] Add Windows support.
+- [2024-04-28] The preprocessing code is released.
+- [2024-04-29] Fix bugs: audio encoder, blendshape capture, and face tracker.
+- [2024-05-24] Introduce torso training to repair double chin.
+- [2025-06-25] Update [SyncTalk_2D](https://github.com/ZiqiaoPeng/SyncTalk_2D).
+
+
+
+## For Windows
+Thanks to [okgpt](https://github.com/okgptai), we have launched a Windows integration package, you can download `SyncTalk-Windows.zip` and unzip it, double-click `inference.bat` to run the demo.
+
+Download link: [Hugging Face](https://huggingface.co/ZiqiaoPeng/SyncTalk/blob/main/SyncTalk-Windows.zip) ||  [Baidu Netdisk](https://pan.baidu.com/s/1g3312mZxx__T6rAFPHjrRg?pwd=6666)
+
+## For Linux
+
+### Installation
+
+Tested on Ubuntu 18.04, Pytorch 1.12.1 and CUDA 11.3.
+```bash
+git clone https://github.com/ZiqiaoPeng/SyncTalk.git
+cd SyncTalk
+```
+#### Install dependency
 
 ```bash
-# 1. Install dependencies
+conda create -n synctalk python==3.8.8
+conda activate synctalk
+pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu113
+sudo apt-get install portaudio19-dev
 pip install -r requirements.txt
-
-# 2. Run with enhanced encoder
-python main.py \
-  --use_enhanced_encoder \
-  --enhanced_encoder_type whisper \
-  --use_prosody \
-  --O --test
-
-# Done! 🎉
+pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py38_cu113_pyt1121/download.html
+pip install tensorflow-gpu==2.8.1
+pip install ./freqencoder
+pip install ./shencoder
+pip install ./gridencoder
+pip install ./raymarching
 ```
-
-**That's it!** Foundation models download automatically on first run.
-
----
-
-## 🎯 Why Use Enhanced Encoders?
-
-### Problem: Original LRS2 Encoder Limitations
-
-The original Audio-Visual Encoder trained on LRS2:
-- ✅ Great at audio → lip synchronization
-- ❌ Ignores prosody (pitch, energy, rhythm)
-- ❌ No emotional understanding
-- ❌ Generic speaking style
-- ❌ Limited to English/LRS2 domain
-
-**Result**: Technically accurate lip sync, but emotionally flat animations.
-
-### Solution: Foundation Model Enhancement
-
-Our enhanced encoders use Whisper/SpeechT5/EnCodec:
-- ✅ Maintains perfect lip sync
-- ✅ Captures prosodic features (pitch contours, energy, rhythm)
-- ✅ Understands emotional context
-- ✅ Preserves speaker personality
-- ✅ Works across 99+ languages
-
-**Result**: Natural, expressive talking heads that feel alive!
-
----
-
-## 📊 Visual Comparison
-
-### Architecture Evolution
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    BEFORE: LRS2 Only                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Audio → [CNN Encoder] → 512D → [AudioNet] → 64D → NeRF  │
-│          └─ LRS2 trained ─┘                                │
-│                                                             │
-│  ✅ Good lip sync                                          │
-│  ❌ No prosody, emotion, or style                          │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│               AFTER: Foundation Models                      │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Audio → [Whisper/SpeechT5] → 512D ─┐                     │
-│          └─ 680k hrs trained ──┘     │                     │
-│                                       ├→ [Fusion] → Enhanced│
-│  Audio → [Prosody Extractor] → 64D ──┤         ↓           │
-│          └─ Pitch/Energy/Rhythm ─┘   │    [AudioNet] → NeRF│
-│                                       │                     │
-│          [Contrastive A-V Align] ────┘                     │
-│                                                             │
-│  ✅ Excellent lip sync                                     │
-│  ✅ Rich prosody modeling                                  │
-│  ✅ Emotional expressions                                  │
-│  ✅ Speaker personality                                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🎬 Examples
-
-### Scenario 1: Emotional Speech
-
-**Input Audio**: "I'm so excited about this!" (high pitch, energetic)
-
-**Before (LRS2)**: 
-- Correct lip movements
-- Flat, neutral facial expression
-- No energy variation
-
-**After (Whisper + Prosody)**:
-- Correct lip movements
-- Wide smile, raised eyebrows
-- Dynamic, energetic head movements
-- Prosody-synchronized expressions
-
-### Scenario 2: Different Languages
-
-**Before**: Limited to English, poor on other languages
-
-**After**: Natural prosody across 99+ languages
-- French: Maintains melodic intonation
-- Mandarin: Respects tonal patterns
-- Spanish: Captures rhythmic style
-
-### Scenario 3: Speaker Personality
-
-**Before**: Same animation for all speakers
-
-**After**: Adapts to individual speaking style
-- Formal speaker: Subtle, controlled
-- Animated speaker: Expressive, dynamic
-- Casual speaker: Relaxed, natural
-
----
-
-## 🛠️ Available Encoders
-
-### 1. **Whisper** ⭐ (Recommended)
+If you encounter problems installing PyTorch3D, you can use the following command to install it:
 ```bash
---enhanced_encoder_type whisper
+python ./scripts/install_pytorch3d.py
 ```
-- Best all-around choice
-- 680k hours of training data
-- 99+ languages supported
-- Strong prosodic understanding
 
-### 2. **Hybrid** 🏆 (Production)
+### Data Preparation
+#### Pre-trained model
+Please place the [May.zip](https://drive.google.com/file/d/18Q2H612CAReFxBd9kxr-i1dD8U1AUfsV/view?usp=sharing) in the **data** folder, the [trial_may.zip](https://drive.google.com/file/d/1C2639qi9jvhRygYHwPZDGs8pun3po3W7/view?usp=sharing) in the **model** folder, and then unzip them.
+#### [New] Process your video
+- Prepare face-parsing model.
+
+  ```bash
+  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_parsing/79999_iter.pth?raw=true -O data_utils/face_parsing/79999_iter.pth
+  ```
+
+- Prepare the 3DMM model for head pose estimation.
+
+  ```bash
+  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/exp_info.npy?raw=true -O data_utils/face_tracking/3DMM/exp_info.npy
+  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/keys_info.npy?raw=true -O data_utils/face_tracking/3DMM/keys_info.npy
+  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/sub_mesh.obj?raw=true -O data_utils/face_tracking/3DMM/sub_mesh.obj
+  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/topology_info.npy?raw=true -O data_utils/face_tracking/3DMM/topology_info.npy
+  ```
+
+- Download 3DMM model from [Basel Face Model 2009](https://faces.dmi.unibas.ch/bfm/main.php?nav=1-1-0&id=details):
+
+  ```
+  # 1. copy 01_MorphableModel.mat to data_util/face_tracking/3DMM/
+  # 2.
+    cd data_utils/face_tracking
+    python convert_BFM.py
+  ```
+- Put your video under `data/<ID>/<ID>.mp4`, and then run the following command to process the video.
+  
+  **[Note]** The video must be 25FPS, with all frames containing the talking person. The resolution should be about 512x512, and duration about 4-5 min.
+  ```bash
+  python data_utils/process.py data/<ID>/<ID>.mp4 --asr ave
+  ```
+  You can choose to use AVE, DeepSpeech or Hubert. The processed video will be saved in the **data** folder. 
+
+
+- [Optional] Obtain AU45 for eyes blinking
+  
+  Run `FeatureExtraction` in [OpenFace](https://github.com/TadasBaltrusaitis/OpenFace), rename and move the output CSV file to `data/<ID>/au.csv`.
+
+
+  **[Note]** Since EmoTalk's blendshape capture is not open source, the preprocessing code here is replaced with mediapipe's blendshape capture. But according to some feedback, it doesn't work well, you can choose to replace it with AU45. If you want to compare with SyncTalk, some results from using EmoTalk capture can be obtained [here](https://drive.google.com/drive/folders/1LLFtQa2Yy2G0FaNOxwtZr0L974TXCYKh?usp=sharing) and videos from [GeneFace](https://drive.google.com/drive/folders/1vimGVNvP6d6nmmc8yAxtWuooxhJbkl68).
+
+
+### Quick Start
+#### Run the evaluation code
 ```bash
---enhanced_encoder_type hybrid
-```
-- Combines LRS2 + Whisper
-- Perfect lip sync + prosody
-- Best balance quality/compatibility
+python main.py data/May --workspace model/trial_may -O --test --asr_model ave
 
-### 3. **Ensemble** 💎 (Maximum Quality)
+python main.py data/May --workspace model/trial_may -O --test --asr_model ave --portrait
+```
+“ave” refers to our Audio Visual Encoder, “portrait” signifies pasting the generated face back onto the original image, representing higher quality.
+
+If it runs correctly, you will get the following results.
+
+| Setting                  | PSNR   | LPIPS  | LMD   |
+|--------------------------|--------|--------|-------|
+| SyncTalk (w/o Portrait)  | 32.201 | 0.0394 | 2.822 |
+| SyncTalk (Portrait)      | 37.644 | 0.0117 | 2.825 |
+
+This is for a single subject; the paper reports the average results for multiple subjects.
+
+#### Inference with target audio
 ```bash
---enhanced_encoder_type ensemble
+python main.py data/May --workspace model/trial_may -O --test --test_train --asr_model ave --portrait --aud ./demo/test.wav
 ```
-- Whisper + SpeechT5 + EnCodec
-- Highest quality output
-- Requires more GPU memory
+Please use files with the “.wav” extension for inference, and the inference results will be saved in “model/trial_may/results/”. If do not use Audio Visual Encoder, replace wav with the npy file path.
+* DeepSpeech
 
-### 4. **SpeechT5** ⚡ (Fast)
+  ```bash
+  python data_utils/deepspeech_features/extract_ds_features.py --input data/<name>.wav # save to data/<name>.npy
+  ```
+* HuBERT
+
+  ```bash
+  # Borrowed from GeneFace. English pre-trained.
+  python data_utils/hubert.py --wav data/<name>.wav # save to data/<name>_hu.npy
+  ```
+### Train
 ```bash
---enhanced_encoder_type speecht5
-```
-- Good balance speed/quality
-- Lighter than Whisper
-- Good prosody modeling
+# by default, we load data from disk on the fly.
+# we can also preload all data to CPU/GPU for faster training, but this is very memory-hungry for large datasets.
+# `--preload 0`: load from disk (default, slower).
+# `--preload 1`: load to CPU (slightly slower)
+# `--preload 2`: load to GPU (fast)
+python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model ave
+python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model ave
 
-### 5. **EnCodec** 🎵 (Audio Quality)
+# or you can use the script to train
+sh ./scripts/train_may.sh
+```
+**[Tips]** Audio visual encoder (AVE) is suitable for characters with accurate lip sync and large lip movements such as May and Shaheen. Using AVE in the inference stage can achieve more accurate lip sync. If your training results show lip jitter, please try using deepspeech or hubert model as audio feature encoder. 
+
 ```bash
---enhanced_encoder_type encodec
+# Use deepspeech model
+python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model deepspeech
+python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model deepspeech
+
+# Use hubert model
+python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model hubert
+python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model hubert
 ```
-- Neural audio codec
-- Preserves audio details
-- Good for music/singing
 
----
+If you want to use the OpenFace au45 as the eye parameter, please add "--au45" to the command line.
 
-## 📖 Documentation
-
-- **[QUICKSTART_ENHANCED.md](QUICKSTART_ENHANCED.md)** - Get started in 5 minutes
-- **[ENHANCED_AUDIO_ENCODER.md](ENHANCED_AUDIO_ENCODER.md)** - Full technical documentation
-- **[IMPROVEMENT_SUMMARY.md](IMPROVEMENT_SUMMARY.md)** - Detailed comparison and analysis
-- **[configs/enhanced_audio_config.yaml](configs/enhanced_audio_config.yaml)** - Configuration templates
-
----
-
-## 💻 Command Examples
-
-### Basic Usage
 ```bash
-# Whisper encoder (recommended)
-python main.py --use_enhanced_encoder --enhanced_encoder_type whisper --use_prosody --O --test
-
-# Hybrid mode (best balance)
-python main.py --use_enhanced_encoder --enhanced_encoder_type hybrid --O --test
-
-# Low memory (6GB GPU)
-python main.py --use_enhanced_encoder --enhanced_encoder_type whisper --batch_size 1 --O --test
+# Use OpenFace AU45
+python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model ave --au45
+python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model ave --au45
 ```
 
-### Training
+### Test
 ```bash
-# Train with Whisper encoder
-python main.py \
-  --workspace output/my_character \
-  --use_enhanced_encoder \
-  --enhanced_encoder_type whisper \
-  --use_prosody \
-  --freeze_audio_backbone \
-  --iters 100000
+python main.py data/May --workspace model/trial_may -O --test --asr_model ave --portrait
 
-# Fine-tune everything (high quality)
-python main.py \
-  --workspace output/my_character_finetuned \
-  --use_enhanced_encoder \
-  --enhanced_encoder_type whisper \
-  --no-freeze_audio_backbone \
-  --iters 50000
 ```
 
-### Testing & Comparison
+### Train & Test Torso [Repair Double Chin]
+If your character trained only the head appeared double chin problem, you can introduce torso training. By training the torso, this problem can be solved, but **you will not be able to use the "--portrait" mode.** If you add "--portrait", the torso model will fail!
+
 ```bash
-# Compare all encoders
-python scripts/test_enhanced_encoder.py --compare all --audio demo/test.wav
+# Train
+# <head>.pth should be the latest checkpoint in trial_may
+python main.py data/May/ --workspace model/trial_may_torso/ -O --torso --head_ckpt <head>.pth --iters 150000 --asr_model ave
 
-# Test specific encoder
-python scripts/test_enhanced_encoder.py --encoder whisper --audio demo/test.wav
+# For example
+python main.py data/May/ --workspace model/trial_may_torso/ -O --torso --head_ckpt model/trial_may/ngp_ep0019.pth --iters 150000 --asr_model ave
+
+# Test
+python main.py data/May --workspace model/trial_may_torso -O  --torso --test --asr_model ave  # not support --portrait
+
+# Inference with target audio
+python main.py data/May --workspace model/trial_may_torso -O  --torso --test --test_train --asr_model ave --aud ./demo/test.wav # not support --portrait
+
 ```
 
----
 
-## 🎓 How It Works
 
-### 1. Foundation Model Encoding
-Instead of training from scratch on LRS2, we use pre-trained models:
-- **Whisper**: 680k hours of multilingual speech
-- **SpeechT5**: Unified speech-text encoder
-- **EnCodec**: Neural audio codec
+## Citation	
 
-These models already understand prosody, emotion, and speaking style!
-
-### 2. Prosody Extraction
-We extract explicit prosodic features:
-- **Pitch (F0)**: Intonation patterns → head movements, eyebrow raises
-- **Energy**: Stress and emphasis → expression intensity
-- **Rhythm**: Speaking tempo → animation dynamics
-
-### 3. Multimodal Alignment (CLIP-like)
-Contrastive learning ensures audio features align with visual features:
 ```
-Audio Embedding ←─── [Contrastive Loss] ───→ Video Embedding
-      │                                              │
-      └──── Closer for matching pairs ──────────────┘
-      └──── Farther for non-matching pairs ─────────┘
-```
-
-### 4. Hybrid Fusion
-Combine strengths of both approaches:
-```
-LRS2 Features (lip sync) + Foundation Features (prosody) = Best Result
-```
-
----
-
-## 📊 Performance
-
-| Encoder | Lip Sync | Prosody | Emotion | Speed | Memory |
-|---------|----------|---------|---------|-------|--------|
-| **Original** | ⭐⭐⭐⭐⭐ | ❌ | ❌ | ⭐⭐⭐⭐⭐ | 6GB |
-| **Whisper** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 8GB |
-| **Hybrid** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 7GB |
-| **Ensemble** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | 12GB |
-
-**Recommendation**: 
-- Production: **Hybrid** (best balance)
-- Research: **Ensemble** (maximum quality)
-- Fast iteration: **Whisper** (good tradeoff)
-
----
-
-## 🔧 Installation
-
-### Requirements
-- Python 3.8+
-- PyTorch 1.13+
-- CUDA GPU with 8GB+ VRAM
-
-### Install
-```bash
-pip install -r requirements.txt
-```
-
-This installs:
-- `transformers>=4.36.0` - Foundation models
-- `accelerate>=0.20.0` - Efficient loading
-- `librosa` - Audio processing
-- All existing SyncTalk dependencies
-
----
-
-## 🎯 Use Cases
-
-### ✅ Perfect For:
-- **Multilingual Content**: 99+ languages supported
-- **Emotional Avatars**: Customer service, virtual assistants
-- **Personal Digital Twins**: Celebrities, influencers
-- **Podcast Videos**: Rich animations for audio content
-- **Audiobook Narration**: Engaging visual accompaniment
-- **Cross-lingual Dubbing**: Natural prosody in target language
-
-### ⚠️ Consider Original For:
-- **Real-time Requirements**: If <10ms latency critical
-- **Memory Constraints**: If <6GB GPU memory
-- **Simple Lip Sync**: If only mouth movements needed
-
----
-
-## 🤔 FAQ
-
-**Q: Will this break my existing SyncTalk setup?**
-A: No! It's completely optional. Without the flags, SyncTalk works exactly as before.
-
-**Q: Do I need to retrain my models?**
-A: Depends. You can use frozen foundation models (faster) or fine-tune (better quality).
-
-**Q: How much slower is it?**
-A: 20-40% slower, but still real-time capable on good GPUs.
-
-**Q: Which encoder should I use?**
-A: Start with Whisper. If you need perfect lip sync, use Hybrid. For max quality, try Ensemble.
-
-**Q: Can I use my own audio encoder?**
-A: Yes! The architecture is modular. See `enhanced_audio_encoder.py` for examples.
-
-**Q: Does this work for singing?**
-A: Yes! EnCodec especially preserves musical qualities. Try ensemble mode.
-
----
-
-## 🐛 Troubleshooting
-
-### Out of Memory
-```bash
-# Use smaller model
---enhanced_encoder_type whisper --whisper_model openai/whisper-base
-
-# Or reduce batch size
---batch_size 1
-```
-
-### Slow Downloads
-```bash
-# Pre-download models
-python -c "from transformers import WhisperModel; WhisperModel.from_pretrained('openai/whisper-small')"
-
-# Or set cache directory
-export HF_HOME=/path/to/fast/disk
-```
-
-### Import Errors
-```bash
-pip install transformers>=4.36.0 accelerate>=0.20.0
-```
-
----
-
-## 📄 Citation
-
-If you use the enhanced audio encoder in your research:
-
-```bibtex
-@article{synctalk_enhanced_2025,
-  title={Enhanced Audio-Visual Synthesis with Foundation Models for Expressive Talking Heads},
-  author={SyncTalk Team},
-  year={2025}
+@inproceedings{peng2024synctalk,
+  title={Synctalk: The devil is in the synchronization for talking head synthesis},
+  author={Peng, Ziqiao and Hu, Wentao and Shi, Yue and Zhu, Xiangyu and Zhang, Xiaomei and Zhao, Hao and He, Jun and Liu, Hongyan and Fan, Zhaoxin},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={666--676},
+  year={2024}
 }
 ```
 
----
+## Acknowledgement
+This code is developed heavily relying on [ER-NeRF](https://github.com/Fictionarry/ER-NeRF), and also [RAD-NeRF](https://github.com/ashawkey/RAD-NeRF), [GeneFace](https://github.com/yerfor/GeneFace), [DFRF](https://github.com/sstzal/DFRF), [DFA-NeRF](https://github.com/ShunyuYao/DFA-NeRF/), [AD-NeRF](https://github.com/YudongGuo/AD-NeRF), and [Deep3DFaceRecon_pytorch](https://github.com/sicxu/Deep3DFaceRecon_pytorch).
 
-## 🙏 Credits
+Thanks for these great projects. Thanks to [Tiandishihua](https://github.com/Tiandishihua) for helping us fix the bug that loss equals NaN.
 
-Built on top of:
-- [OpenAI Whisper](https://github.com/openai/whisper)
-- [Microsoft SpeechT5](https://github.com/microsoft/SpeechT5)
-- [Meta EnCodec](https://github.com/facebookresearch/encodec)
-- [SyncTalk](https://github.com/ZiqiaoPeng/SyncTalk)
-
----
-
-## 📞 Support
-
-- **Quick Start**: [QUICKSTART_ENHANCED.md](QUICKSTART_ENHANCED.md)
-- **Full Docs**: [ENHANCED_AUDIO_ENCODER.md](ENHANCED_AUDIO_ENCODER.md)
-- **Issues**: Open a GitHub issue
-- **Examples**: See `configs/` directory
-
----
-
-## 🎉 Summary
-
-✅ **What you get:**
-- Drop-in replacement for LRS2 encoder
-- Rich prosodic features (pitch, energy, rhythm)
-- Emotional understanding and speaking style
-- 99+ languages support
-- Minimal setup required
-
-🚀 **Get Started:**
-```bash
-python main.py --use_enhanced_encoder --enhanced_encoder_type whisper --O --test
-```
-
-**Transform your talking heads from technically accurate to genuinely expressive!** 🎭✨
-
----
-
-*Last updated: 2025*
-
+## Disclaimer
+By using the "SyncTalk", users agree to comply with all applicable laws and regulations, and acknowledge that misuse of the software, including the creation or distribution of harmful content, is strictly prohibited. The developers of the software disclaim all liability for any direct, indirect, or consequential damages arising from the use or misuse of the software.
