@@ -1,0 +1,113 @@
+# SyncGaussian Requirements
+# =========================
+# Hybrid 3D Gaussian Splatting + Tri-plane NeRF for Talking Head Synthesis
+#
+# Install with: pip install -r requirements_sync.txt
+#
+# Note: Some packages require CUDA compilation (gridencoder, raymarching, etc.)
+# Run setup.py in respective directories after pip install.
+
+# Core PyTorch (use version matching your CUDA)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Core dependencies
+numpy==1.24.4
+scipy>=1.10.0
+scikit-learn>=1.2.0
+pandas>=2.0.3
+
+# Image and video processing
+opencv-python>=4.7.0
+Pillow>=9.5.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.8
+
+# 3D and geometry
+trimesh>=3.21.0
+PyMCubes==0.1.4
+plyfile>=0.8.1
+
+# Neural network utilities
+einops>=0.6.1
+lpips>=0.1.4
+
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.1
+resampy>=0.4.2
+python_speech_features>=0.6
+pyaudio>=0.2.13
+
+# Face processing
+face_alignment==1.4.1
+mediapipe>=0.10.0
+
+# Transformers for audio encoding
+transformers==4.36.0
+
+# Training utilities
+torch-ema>=0.3
+tensorboardX>=2.6
+tqdm>=4.65.0
+rich>=13.3.0
+configargparse>=1.5.3
+
+# Visualization
+matplotlib>=3.7.0
+dearpygui>=1.9.0
+
+# Mesh and rendering
+fvcore>=0.1.5
+iopath>=0.1.10
+
+# ONNX for some models
+onnxruntime-gpu>=1.15.0
+
+# Additional utilities
+ninja>=1.11.1
+packaging>=23.1
+numba>=0.57.0
+
+# =====================
+# Custom CUDA Extensions
+# =====================
+# These need to be compiled after installation:
+#
+# 1. diff-gaussian-rasterization:
+#    cd diff-gaussian-rasterization && pip install -e .
+#
+# 2. simple-knn:
+#    cd simple-knn && pip install -e .
+#
+# 3. gridencoder:
+#    cd gridencoder && pip install -e .
+#
+# 4. freqencoder:
+#    cd freqencoder && pip install -e .
+#
+# 5. shencoder:
+#    cd shencoder && pip install -e .
+#
+# 6. raymarching:
+#    cd raymarching && pip install -e .
+
+# =====================
+# Optional Dependencies
+# =====================
+# For HuBERT audio features:
+
+# For face tracking (MediaPipe):
+# Already included above
+
+# For optical flow (bundle adjustment):
+# Requires custom UNFaceFlow setup - see data_utils/UNFaceFlow
+
+# =====================
+# Development Tools
+# =====================
+# pytest>=7.3.0
+# black>=23.3.0
+# flake8>=6.0.0
+
