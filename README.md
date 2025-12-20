@@ -1,234 +1,261 @@
-# SyncTalk: The Devil😈 is in the Synchronization for Talking Head Synthesis [CVPR 2024]
+# InsTaG: Learning Personalized 3D Talking Head from Few-Second Video
 
+Official repository for our CVPR 2025 paper **InsTaG: Learning Personalized 3D Talking Head from Few-Second Video**.
 
-The official repository of the paper [SyncTalk: The Devil is in the Synchronization for Talking Head Synthesis](https://arxiv.org/abs/2311.17590)
+[`Paper`](https://openaccess.thecvf.com/content/CVPR2025/papers/Li_InsTaG_Learning_Personalized_3D_Talking_Head_from_Few-Second_Video_CVPR_2025_paper.pdf)  | [`ArXiv`](https://arxiv.org/abs/2502.20387) | [`Project`](https://fictionarry.github.io/InsTaG/) | [`Video`](https://www.youtube.com/watch?v=CJ9aUwPyspg)
 
-<p align='center'>
-  <b>
-    <a href="https://arxiv.org/abs/2311.17590">Paper</a>
-    | 
-    <a href="https://ziqiaopeng.github.io/synctalk/">Project Page</a>
-    |
-    <a href="https://github.com/ZiqiaoPeng/SyncTalk">Code</a> 
-  </b>
-</p> 
+<img src="./assets/main.png" alt="image" style="zoom:80%;" />
 
-Colab notebook demonstration: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Egq0_ZK5sJAAawShxC0y4JRZQuVS2X-Z?usp=sharing)
+## Installation
 
-A short demo video can be found [here](./demo/short_demo.mp4).
+Tested on Ubuntu 18.04, CUDA 11.3 / 11.7, PyTorch 1.12.1 / 1.13.1
 
-  <p align='center'>  
-    <img src='assets/image/synctalk.png' width='1000'/>
-  </p>
-
-  The proposed **SyncTalk** synthesizes synchronized talking head videos, employing tri-plane hash representations to maintain subject identity. It can generate synchronized lip movements, facial expressions, and stable head poses, and restores hair details to create high-resolution videos.
-  
-<div align="center">
-  
-  **🔥Try using [SyncTalk_2D](https://github.com/ZiqiaoPeng/SyncTalk_2D) to achieve faster and better visual quality.🔥**
-  
-  </div>
-
-## 🔥🔥🔥 News
-- [2023-11-30] Update arXiv paper.
-- [2024-03-04] The code and pre-trained model are released.
-- [2024-03-22] The Google Colab notebook is released.
-- [2024-04-14] Add Windows support.
-- [2024-04-28] The preprocessing code is released.
-- [2024-04-29] Fix bugs: audio encoder, blendshape capture, and face tracker.
-- [2024-05-24] Introduce torso training to repair double chin.
-- [2025-06-25] Update [SyncTalk_2D](https://github.com/ZiqiaoPeng/SyncTalk_2D).
-
-
-
-## For Windows
-Thanks to [okgpt](https://github.com/okgptai), we have launched a Windows integration package, you can download `SyncTalk-Windows.zip` and unzip it, double-click `inference.bat` to run the demo.
-
-Download link: [Hugging Face](https://huggingface.co/ZiqiaoPeng/SyncTalk/blob/main/SyncTalk-Windows.zip) ||  [Baidu Netdisk](https://pan.baidu.com/s/1g3312mZxx__T6rAFPHjrRg?pwd=6666)
-
-## For Linux
-
-### Installation
-
-Tested on Ubuntu 18.04, Pytorch 1.12.1 and CUDA 11.3.
-```bash
-git clone https://github.com/ZiqiaoPeng/SyncTalk.git
-cd SyncTalk
 ```
-#### Install dependency
-
-```bash
-conda create -n synctalk python==3.8.8
-conda activate synctalk
-pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu113
-sudo apt-get install portaudio19-dev
-pip install -r requirements.txt
-pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py38_cu113_pyt1121/download.html
-pip install tensorflow-gpu==2.8.1
-pip install ./freqencoder
-pip install ./shencoder
-pip install ./gridencoder
-pip install ./raymarching
-```
-If you encounter problems installing PyTorch3D, you can use the following command to install it:
-```bash
-python ./scripts/install_pytorch3d.py
+git submodule update --init --recursive
+conda env create --file environment.yml
+conda activate instag
+pip install "git+https://github.com/facebookresearch/pytorch3d.git"
+pip install tensorflow-gpu==2.10.0
 ```
 
-### Data Preparation
-#### Pre-trained model
-Please place the [May.zip](https://drive.google.com/file/d/18Q2H612CAReFxBd9kxr-i1dD8U1AUfsV/view?usp=sharing) in the **data** folder, the [trial_may.zip](https://drive.google.com/file/d/1C2639qi9jvhRygYHwPZDGs8pun3po3W7/view?usp=sharing) in the **model** folder, and then unzip them.
-#### [New] Process your video
-- Prepare face-parsing model.
+If encounter installation problem from the `diff-gaussian-rasterization` or `gridencoder`, please refer to [diff-gaussian-rasterization](https://github.com/slothfulxtx/diff-gaussian-rasterization.git) and [torch-ngp](https://github.com/ashawkey/torch-ngp).
+
+### Preparation
+
+- Prepare pre-trained weights for the tools and the 3DMM model for head pose estimation.
 
   ```bash
-  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_parsing/79999_iter.pth?raw=true -O data_utils/face_parsing/79999_iter.pth
-  ```
-
-- Prepare the 3DMM model for head pose estimation.
-
-  ```bash
-  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/exp_info.npy?raw=true -O data_utils/face_tracking/3DMM/exp_info.npy
-  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/keys_info.npy?raw=true -O data_utils/face_tracking/3DMM/keys_info.npy
-  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/sub_mesh.obj?raw=true -O data_utils/face_tracking/3DMM/sub_mesh.obj
-  wget https://github.com/YudongGuo/AD-NeRF/blob/master/data_util/face_tracking/3DMM/topology_info.npy?raw=true -O data_utils/face_tracking/3DMM/topology_info.npy
+  bash scripts/prepare.sh
   ```
 
 - Download 3DMM model from [Basel Face Model 2009](https://faces.dmi.unibas.ch/bfm/main.php?nav=1-1-0&id=details):
 
-  ```
-  # 1. copy 01_MorphableModel.mat to data_util/face_tracking/3DMM/
-  # 2.
-    cd data_utils/face_tracking
-    python convert_BFM.py
-  ```
-- Put your video under `data/<ID>/<ID>.mp4`, and then run the following command to process the video.
-  
-  **[Note]** The video must be 25FPS, with all frames containing the talking person. The resolution should be about 512x512, and duration about 4-5 min.
   ```bash
-  python data_utils/process.py data/<ID>/<ID>.mp4 --asr ave
+  # 1. copy 01_MorphableModel.mat to data_util/face_tracking/3DMM/
+  # 2. run following
+  cd data_utils/face_tracking
+  python convert_BFM.py
   ```
-  You can choose to use AVE, DeepSpeech or Hubert. The processed video will be saved in the **data** folder. 
 
+- Prepare the environment for [EasyPortrait](https://github.com/hukenovs/easyportrait):
 
-- [Optional] Obtain AU45 for eyes blinking
+  ```bash
+  # prepare mmcv
+  conda activate instag
+  pip install -U openmim
+  mim install mmcv-full==1.7.1 prettytable
   
+  # download model weight
+  wget "https://rndml-team-cv.obs.ru-moscow-1.hc.sbercloud.ru/datasets/easyportrait/experiments/models/fpn-fp-512.pth" -O data_utils/easyportrait/fpn-fp-512.pth
+  ```
+
+- Prepare the environment for [sapiens](https://github.com/facebookresearch/sapiens/blob/main/lite/README.md):
+
+  ```bash
+  conda create -n sapiens_lite python=3.10
+  conda activate sapiens_lite
+  conda install pytorch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 pytorch-cuda=12.1 -c pytorch -c nvidia
+  pip install opencv-python tqdm json-tricks
+  # Download the sapiens models. Git LFS is required. 
+  # We defaultly choose 0.3b models here to save storage and time, while 2b is better.
+  # For the Chinese Mainland users, may manually choose the HF mirror in the script for acceleration.
+  bash scripts/prepare_sapiens.sh
+  ```
+
+## Important Notice
+This code is provided for research purposes only. The author makes no warranties, express or implied, as to the accuracy, completeness, or fitness for a particular purpose of the code. Use this code at your own risk.
+
+The author explicitly prohibits the use of this code for any malicious or illegal activities. By using this code, you agree to comply with all applicable laws and regulations, and you agree not to use it to harm others or to perform any actions that would be considered unethical or illegal.
+
+The author will not be responsible for any damages, losses, or issues that arise from the use of this code.
+
+Users are required to use this code responsibly and ethically.
+
+## Data Preparation
+
+### Dataset Organization
+The video datas should be seperated as two parts. In our paper, we take 5 long videos to compose the pre-training set stored in `./data/pretrain`, and use the others for test. 
+Our recommend structure is as follow:
+
+```
+./data/
+├──pretrain # pre-training set
+│  ├──<ID 1>
+│  │  └──<ID 1>.mp4 # original video
+│  ├──<ID 2>
+│  │  └──<ID 2>.mp4 # original video
+│  .. ..
+├──<ID 3> # other data for test 
+│  └─<ID 3>.mp4 # original video
+.. ..
+```
+
+### Pre-processing Training Video
+
+- Put training video under `data/<ID>/<ID>.mp4`.
+
+  The video **must be 25FPS, with all frames containing the talking person**. 
+
+  The resolution should be about 512x512.
+
+- Run script to process the video.
+
+  ```bash
+  # Required.
+  python data_utils/process.py data/<ID>/<ID>.mp4
+  # Optional. To retain at least 12s data for evaluation.
+  python data_utils/split.py data/<ID>/<ID>.mp4    
+  ```
+
+- Obtain Action Units
+
   Run `FeatureExtraction` in [OpenFace](https://github.com/TadasBaltrusaitis/OpenFace), rename and move the output CSV file to `data/<ID>/au.csv`.
 
-
-  **[Note]** Since EmoTalk's blendshape capture is not open source, the preprocessing code here is replaced with mediapipe's blendshape capture. But according to some feedback, it doesn't work well, you can choose to replace it with AU45. If you want to compare with SyncTalk, some results from using EmoTalk capture can be obtained [here](https://drive.google.com/drive/folders/1LLFtQa2Yy2G0FaNOxwtZr0L974TXCYKh?usp=sharing) and videos from [GeneFace](https://drive.google.com/drive/folders/1vimGVNvP6d6nmmc8yAxtWuooxhJbkl68).
-
-
-### Quick Start
-#### Run the evaluation code
-```bash
-python main.py data/May --workspace model/trial_may -O --test --asr_model ave
-
-python main.py data/May --workspace model/trial_may -O --test --asr_model ave --portrait
-```
-“ave” refers to our Audio Visual Encoder, “portrait” signifies pasting the generated face back onto the original image, representing higher quality.
-
-If it runs correctly, you will get the following results.
-
-| Setting                  | PSNR   | LPIPS  | LMD   |
-|--------------------------|--------|--------|-------|
-| SyncTalk (w/o Portrait)  | 32.201 | 0.0394 | 2.822 |
-| SyncTalk (Portrait)      | 37.644 | 0.0117 | 2.825 |
-
-This is for a single subject; the paper reports the average results for multiple subjects.
-
-#### Inference with target audio
-```bash
-python main.py data/May --workspace model/trial_may -O --test --test_train --asr_model ave --portrait --aud ./demo/test.wav
-```
-Please use files with the “.wav” extension for inference, and the inference results will be saved in “model/trial_may/results/”. If do not use Audio Visual Encoder, replace wav with the npy file path.
-* DeepSpeech
+- Generate tooth masks
 
   ```bash
-  python data_utils/deepspeech_features/extract_ds_features.py --input data/<name>.wav # save to data/<name>.npy
+  export PYTHONPATH=./data_utils/easyportrait 
+  python ./data_utils/easyportrait/create_teeth_mask.py ./data/<ID>
   ```
-* HuBERT
+
+- Generate geometry priors.
+  
+  Only for adaptation. Not required for pre-training data.
+
+  ```bash
+  conda activate sapiens_lite
+  # Generate geometry priors for the first 500 images in default using 4 GPUs.
+  # You can configure them at ./data_utils/sapiens/lite/scripts .
+  bash ./data_utils/sapiens/run.sh ./data/<ID>
+  ```
+
+### Audio Pre-process
+
+In our paper, we use DeepSpeech features for evaluation. Additionally, we find AVE from [SyncTalk](https://github.com/ZiqiaoPeng/SyncTalk) performs remarkably, despite a bit of instability.
+
+- DeepSpeech
+
+  The extractor we used in experiments for evaluations.
+
+  ```bash
+  # saved to data/<name>.npy
+  python data_utils/deepspeech_features/extract_ds_features.py --input data/<name>.wav 
+  ```
+
+- Wav2Vec
+  
+  Performs better than DeepSpeech for most cases.
+
+  ```bash
+  # save to data/<name>_eo.npy
+  python data_utils/wav2vec.py --wav data/<name>.wav --save_feats 
+  ```
+
+- AVE
+
+  With the best lip-synchronization in most few-shot cases, especially for English, but may cause jitter and crash.
+
+  ```bash
+  # No operation needed in this step. 
+  ```
+
+- HuBERT
+  
+  Good generalizability for non-English languages like Chinese and other OOD situations. Work better with a longer training video.
+
+  Notably, in our test, HuBERT does not perform very ideally for extreme few-shot scenarios, maybe due to its high dimension. Recommend using at least 10s data for training.
 
   ```bash
   # Borrowed from GeneFace. English pre-trained.
   python data_utils/hubert.py --wav data/<name>.wav # save to data/<name>_hu.npy
   ```
-### Train
-```bash
-# by default, we load data from disk on the fly.
-# we can also preload all data to CPU/GPU for faster training, but this is very memory-hungry for large datasets.
-# `--preload 0`: load from disk (default, slower).
-# `--preload 1`: load to CPU (slightly slower)
-# `--preload 2`: load to GPU (fast)
-python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model ave
-python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model ave
 
-# or you can use the script to train
-sh ./scripts/train_may.sh
-```
-**[Tips]** Audio visual encoder (AVE) is suitable for characters with accurate lip sync and large lip movements such as May and Shaheen. Using AVE in the inference stage can achieve more accurate lip sync. If your training results show lip jitter, please try using deepspeech or hubert model as audio feature encoder. 
+### Pre-training
+
+We assume all the pre-training video data are in `./data/pretrain`. The IDs of used videos can be specified in `./pretrain_face.py` and `./pretrain_mouth.py`. 
+
+In our paper, we use five videos for pre-training, including three videos "Obama1", "Jae-in", "Shaheen" from [GeneFace](https://drive.google.com/drive/folders/1vimGVNvP6d6nmmc8yAxtWuooxhJbkl68), and "may", "macron" from [TalkingGaussian](https://drive.google.com/drive/u/1/folders/1E_8W805lioIznqbkvTQHWWi5IFXUG7Er).
+
+
+After organizing and pre-processing the videos, run the script to start pre-training.
 
 ```bash
-# Use deepspeech model
-python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model deepspeech
-python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model deepspeech
-
-# Use hubert model
-python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model hubert
-python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model hubert
+# Several scripts are available in ./scripts for different audio extractors.
+bash scripts/pretrain_con.sh data/pretrain output/<project_name> <GPU_ID>
 ```
 
-If you want to use the OpenFace au45 as the eye parameter, please add "--au45" to the command line.
+**Memory Hints**: Please be cautious about the consumption of computer memory. Each 5-minute training data requires about 12GB RAM for the preloading. You may implement on-the-fly loading by yourself to reduce the consumption.
+
+**Checkpoints**: Here we provide four pre-training weights: [Google Drive](https://drive.google.com/drive/folders/1R77F6YN1QUldjqAi3fsXs2N8rrsRYMPP?usp=sharing). You may unzip and put them in `./output` for testing. Note that these pre-training weights are for research purposes, corresponding to our paper. You may need to retrain the model with customized data, language, and configuration to get personally required performance.
+
+Additionally, a trial weight pre-trained with data including Chinese videos is provided [here](https://drive.google.com/file/d/1EyG1T07AZKO0_U6IfezB0GY_c9LvpClh/view?usp=drive_link). 
+
+
+### Adaptation
+
+Given a new identity, run the script to train a new person-specific model based on the pre-training.
 
 ```bash
-# Use OpenFace AU45
-python main.py data/May --workspace model/trial_may -O --iters 60000 --asr_model ave --au45
-python main.py data/May --workspace model/trial_may -O --iters 100000 --finetune_lips --patch_size 64 --asr_model ave --au45
+# Audio encoder and pre-training checkpoint can be configured in the script.
+# By default, 10s data is used.
+bash scripts/train_xx_few.sh data/<ID> output/<project_name> <GPU_ID>
 ```
 
-### Test
+The video of the new identity will be separated into a training clip, and a test clip with at least 12s length. Evaluation metrics will be calculated and reported on the test set.
+
+The videos used for test in our paper is fetched from [DFRF](https://github.com/sstzal/DFRF/tree/main/dataset/vids) ("cnn", "cnn2", "english_w") and [GeneFace](https://drive.google.com/drive/folders/1vimGVNvP6d6nmmc8yAxtWuooxhJbkl68) ("Lieu"). You can first start with these videos to check the correctness of the environment installation.
+
+<!-- For research purposes, it is notable that there should not be character overlap between the pre-training set and test set for fairness, e.g., since we have used one Obama video in pre-training, it's not expected to use another video with Obama to evaluate the adaptation, even if they are captured at different times.  -->
+
+#### Options
+
+Here are some options that may help customization. Some defaults are set in the scripts.
+
+- `--audio_extractor`: Specify the type of used audio extractor. Options: `deepspeech` (default), `ave`, `esperanto` `hubert`.
+  
+- `--N_views`: For training only. The number of frames used in training, 25 frames per second. `-1` denotes using all the training clip.
+
+- `--long`: For training only. Specify it if data is sufficient, i.e., using minutes or longer video for training. Geometry regularization is forbidden under such mode with `--N_views -1`, so you can skip the generating of geometry priors. 
+
+- `--all_for_train`: For training only. Merge training and test clip together to train the model. Note that after specifying this, the reported metrics will become invalid.
+
+- `--use_train`: For Inference only. Use the pose sequence of the training set to drive the rendering.
+
+
+#### Test
+
+Run the script to render the test clip.
+
 ```bash
-python main.py data/May --workspace model/trial_may -O --test --asr_model ave --portrait
-
+# Saved to output/<project_name>/test/ours_None/renders
+# Specify `--audio_extractor` if not using DeepSpeech
+python synthesize_fuse.py -S data/<ID> -M output/<project_name> --eval  
 ```
 
-### Train & Test Torso [Repair Double Chin]
-If your character trained only the head appeared double chin problem, you can introduce torso training. By training the torso, this problem can be solved, but **you will not be able to use the "--portrait" mode.** If you add "--portrait", the torso model will fail!
+#### Inference with Specified Audio
+
+You can also specify an audio to drive the talking head.
 
 ```bash
-# Train
-# <head>.pth should be the latest checkpoint in trial_may
-python main.py data/May/ --workspace model/trial_may_torso/ -O --torso --head_ckpt <head>.pth --iters 150000 --asr_model ave
-
-# For example
-python main.py data/May/ --workspace model/trial_may_torso/ -O --torso --head_ckpt model/trial_may/ngp_ep0019.pth --iters 150000 --asr_model ave
-
-# Test
-python main.py data/May --workspace model/trial_may_torso -O  --torso --test --asr_model ave  # not support --portrait
-
-# Inference with target audio
-python main.py data/May --workspace model/trial_may_torso -O  --torso --test --test_train --asr_model ave --aud ./demo/test.wav # not support --portrait
-
+# Specify `--audio_extractor` if not using DeepSpeech
+# If AVE is used, please set the path of a .wav file for `--audio`.
+python synthesize_fuse.py -S data/<ID> -M output/<project_name> --dilate --use_train --audio <preprocessed_audio_feature>.npy --audio_extractor ave
 ```
 
+## Citation
 
-
-## Citation	
+Consider citing as below if you find this repository helpful to your project:
 
 ```
-@inproceedings{peng2024synctalk,
-  title={Synctalk: The devil is in the synchronization for talking head synthesis},
-  author={Peng, Ziqiao and Hu, Wentao and Shi, Yue and Zhu, Xiangyu and Zhang, Xiaomei and Zhao, Hao and He, Jun and Liu, Hongyan and Fan, Zhaoxin},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-  pages={666--676},
-  year={2024}
+@inproceedings{li2025instag,
+    title={InsTaG: Learning Personalized 3D Talking Head from Few-Second Video}, 
+    author={Li, Jiahe and Zhang, Jiawei and Bai, Xiao and Zheng, Jin and Zhou, Jun and Gu, Lin},
+    booktitle={Proceedings of the IEEE/CVF conference on computer vision and pattern recognition},
+    year={2025}
 }
 ```
 
+
 ## Acknowledgement
-This code is developed heavily relying on [ER-NeRF](https://github.com/Fictionarry/ER-NeRF), and also [RAD-NeRF](https://github.com/ashawkey/RAD-NeRF), [GeneFace](https://github.com/yerfor/GeneFace), [DFRF](https://github.com/sstzal/DFRF), [DFA-NeRF](https://github.com/ShunyuYao/DFA-NeRF/), [AD-NeRF](https://github.com/YudongGuo/AD-NeRF), and [Deep3DFaceRecon_pytorch](https://github.com/sicxu/Deep3DFaceRecon_pytorch).
 
-Thanks for these great projects. Thanks to [Tiandishihua](https://github.com/Tiandishihua) for helping us fix the bug that loss equals NaN.
-
-## Disclaimer
-By using the "SyncTalk", users agree to comply with all applicable laws and regulations, and acknowledge that misuse of the software, including the creation or distribution of harmful content, is strictly prohibited. The developers of the software disclaim all liability for any direct, indirect, or consequential damages arising from the use or misuse of the software.
+This code is developed on [gaussian-splatting](https://github.com/graphdeco-inria/gaussian-splatting) with [simple-knn](https://gitlab.inria.fr/bkerbl/simple-knn), and a modified [diff-gaussian-rasterization](https://github.com/slothfulxtx/diff-gaussian-rasterization.git). Partial codes are from [RAD-NeRF](https://github.com/ashawkey/RAD-NeRF), [DFRF](https://github.com/sstzal/DFRF), [GeneFace](https://github.com/yerfor/GeneFace), and [AD-NeRF](https://github.com/YudongGuo/AD-NeRF). Teeth mask is from [EasyPortrait](https://github.com/hukenovs/easyportrait). Geometry priors are from [sapiens](https://github.com/facebookresearch/sapiens/blob/main/lite/README.md). Thanks for these great projects!

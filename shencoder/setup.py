@@ -29,6 +29,10 @@ elif os.name == "nt":
             raise RuntimeError("Could not locate a supported Microsoft Visual C++ installation")
         os.environ["PATH"] += ";" + cl_path
 
+if torch.__version__.startswith("2"):
+    nvcc_flags[1] = '-std=c++17'
+    c_flags[1] = '-std=c++17'
+
 setup(
     name='shencoder', # package name, import this to use python API
     ext_modules=[
