@@ -14,7 +14,7 @@ import math
 # from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
 from diff_gauss import GaussianRasterizationSettings, GaussianRasterizer
 from scene.gaussian_model import GaussianModel
-from scene.motion_net import MotionNetwork, MouthMotionNetwork
+from scene.motion_net import MotionNetwork, MouthMotionNetwork, SyncFaceMotionNetwork
 from utils.sh_utils import eval_sh
 
 
@@ -249,7 +249,7 @@ def render_motion(viewpoint_camera, pc : GaussianModel, motion_net : MotionNetwo
 
 
 def render_motion_mouth_con(viewpoint_camera, pc : GaussianModel, motion_net : MouthMotionNetwork, pc_face : GaussianModel, motion_net_face : MotionNetwork, pipe, bg_color : torch.Tensor, \
-                        scaling_modifier=1.0, frame_idx=None, return_attn=False, personalized=False, align=False, k=10, inference=False):
+                        scaling_modifier=1.0, frame_idx=None, return_attn=False, personalized=False, align=False, k=10, inference=False, blendshapes=None):
     """
     Render the scene. 
     
@@ -307,7 +307,11 @@ def render_motion_mouth_con(viewpoint_camera, pc : GaussianModel, motion_net : M
         motion_min, _ =  motion_preds_face["d_xyz"][..., 1].topk(k, 0, False, True)
         move_feat = torch.as_tensor([[motion_max[-1], motion_min[-1], motion_max[-1] - motion_min[-1]]]).cuda() * 1e2
         
-    motion_preds = motion_net(xyz, audio_feat, move_feat.detach())
+    # Check if using SyncFaceMotionNetwork (with blendshapes)
+    if isinstance(motion_net, SyncFaceMotionNetwork):
+        motion_preds = motion_net(xyz, audio_feat, blendshapes.unsqueeze(0).cuda())
+    else:
+        motion_preds = motion_net(xyz, audio_feat, move_feat.detach())
     d_xyz = motion_preds['d_xyz']
     # d_rot = motion_preds['d_rot']
     

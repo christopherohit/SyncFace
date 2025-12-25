@@ -17,7 +17,7 @@ from utils.loss_utils import l1_loss, l2_loss, patchify, ssim
 from gaussian_renderer import render, render_motion, render_motion_mouth_con
 import sys
 import copy
-from scene import Scene, GaussianModel, MouthMotionNetwork, MotionNetwork
+from scene import Scene, GaussianModel, MouthMotionNetwork, MotionNetwork, SyncFaceMotionNetwork
 from utils.general_utils import safe_state
 import lpips
 import uuid
@@ -59,7 +59,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians = GaussianModel(dataset)
     scene = Scene(dataset, gaussians)
 
-    motion_net = MouthMotionNetwork(args=dataset).cuda()
+    motion_net = SyncFaceMotionNetwork(args=dataset).cuda()
     motion_optimizer = torch.optim.AdamW(motion_net.get_params(5e-3, 5e-4), betas=(0.9, 0.99), eps=1e-8, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.LambdaLR(motion_optimizer, lambda iter: 0.1 if iter < warm_step else 0.5 ** (iter / opt.iterations))
     
@@ -161,6 +161,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         hair_mask = torch.as_tensor(viewpoint_cam.talking_dict["hair_mask"]).cuda()
         mouth_mask = torch.as_tensor(viewpoint_cam.talking_dict["mouth_mask"]).cuda()
         head_mask =  face_mask + hair_mask
+
+        # Extract blendshapes for SyncFaceMotionNetwork
+        blendshapes = viewpoint_cam.talking_dict['blendshapes'].cuda()
         
         [xmin, xmax, ymin, ymax] = viewpoint_cam.talking_dict['lips_rect']
         lips_mask = torch.zeros_like(mouth_mask)
@@ -169,11 +172,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if iteration < warm_step:
             # render_pkg = render(viewpoint_cam, gaussians, pipe, background)
             enable_align = iteration > 1000
-            render_pkg = render_motion_mouth_con(viewpoint_cam, gaussians, motion_net, gaussians_face, motion_net_face, pipe, background, personalized=False, align=enable_align, k=randint(10, 50))
+            render_pkg = render_motion_mouth_con(viewpoint_cam, gaussians, motion_net, gaussians_face, motion_net_face, pipe, background, personalized=False, align=enable_align, k=randint(10, 50), blendshapes=blendshapes)
             # for param in motion_net.parameters():
             #     param.requires_grad = False
         else:
-            render_pkg = render_motion_mouth_con(viewpoint_cam, gaussians, motion_net, gaussians_face, motion_net_face, pipe, background, personalized=False, align=True, k=randint(10, 50))
+            render_pkg = render_motion_mouth_con(viewpoint_cam, gaussians, motion_net, gaussians_face, motion_net_face, pipe, background, personalized=False, align=True, k=randint(10, 50), blendshapes=blendshapes)
             # for param in motion_net.parameters():
             #     param.requires_grad = True
                 
@@ -331,8 +334,14 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 
                     l1_test += l1_loss(image, gt_image).mean().double()
                     psnr_test += psnr(image, gt_image).mean().double()
+
+                    # Visualization for SyncFace masks
+                    if tb_writer and 'motion' in render_pkg and 'mask_aud' in render_pkg['motion']:
+                        tb_writer.add_histogram('mask/audio', render_pkg['motion']['mask_aud'], iteration)
+                        tb_writer.add_histogram('mask/face', render_pkg['motion']['mask_face'], iteration)
+
                 psnr_test /= len(config['cameras'])
-                l1_test /= len(config['cameras'])          
+                l1_test /= len(config['cameras'])
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
                 if tb_writer:
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)

@@ -14,7 +14,7 @@ import os
 import random
 import json
 from utils.system_utils import searchForMaxIteration
-from scene_pretrain.dataset_readers import sceneLoadTypeCallbacks
+from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
 from scene.motion_net import MotionNetwork, MouthMotionNetwork, PersonalizedMotionNetwork
 from arguments import ModelParams
@@ -96,3 +96,8 @@ class Scene:
 
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
+
+
+# Import additional classes for pretrain scripts
+from scene.gaussian_model import GaussianModel
+from scene.motion_net import MouthMotionNetwork, MotionNetwork, PersonalizedMotionNetwork, SyncFaceMotionNetwork

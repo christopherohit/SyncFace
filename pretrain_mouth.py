@@ -25,6 +25,7 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+import csv
 try:
     from tensorboardX import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -32,9 +33,18 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
-    data_list = [
-        "macron", "shaheen", "may", "jaein", "obama1" 
-    ]
+    # Define data sources - adjust based on source_path structure
+    # Assuming source_path is data/improve_v1/pretrain for pretrain datasets
+    data_sources = {
+        "Macron": "",
+        "May": "",
+        "Jae-in": "",
+        # "Obama": "",
+        # "Obama1": "",
+        # "Obama2": "",
+        # "Shaheen": "../Shaheen",  # Shaheen is in parent directory
+    }
+    data_list = list(data_sources.keys())
 
     testing_iterations = [i * len(data_list) for i in range(0, opt.iterations + 1, 2000)]
     checkpoint_iterations =  saving_iterations = [i * len(data_list) for i in range(0, opt.iterations + 1, 5000)] + [opt.iterations * len(data_list)]
@@ -52,13 +62,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     opt.iterations *= len(data_list)
 
     first_iter = 0
-    tb_writer = prepare_output_and_logger(dataset)
+    tb_writer, csv_log_path = prepare_output_and_logger(dataset)
     
     scene_list = []
-    for data_name in data_list:  
+    for data_name in data_list:
         gaussians = GaussianModel(dataset)
         _dataset = copy.deepcopy(dataset)
-        _dataset.source_path = os.path.join(dataset.source_path, data_name)
+        # Handle different data source locations
+        subdir = data_sources[data_name]
+        if subdir:
+            _dataset.source_path = os.path.join(dataset.source_path, subdir, data_name)
+        else:
+            _dataset.source_path = os.path.join(dataset.source_path, data_name)
         _dataset.model_path = os.path.join(dataset.model_path, data_name)
         
         os.makedirs(_dataset.model_path, exist_ok = True)
@@ -249,7 +264,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             #     scene.save(str(iteration)+'_mouth')
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, motion_net, motion_net_face, render if iteration < warm_step else render_motion_mouth_con, (pipe, background))
+            training_report(tb_writer, csv_log_path, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, motion_net, motion_net_face, render if iteration < warm_step else render_motion_mouth_con, (pipe, background))
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 ckpt = (motion_net.state_dict(), motion_optimizer.state_dict(), iteration)
@@ -321,9 +336,22 @@ def prepare_output_and_logger(args):
         tb_writer = SummaryWriter(args.model_path)
     else:
         print("Tensorboard not available: not logging progress")
-    return tb_writer
+    
+    # Initialize CSV log file for mouth training
+    csv_log_path = os.path.join(args.model_path, "training_log_mouth.csv")
+    with open(csv_log_path, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['iteration', 'l1_loss', 'total_loss', 'elapsed_time_ms', 'test_l1_loss', 'test_psnr', 'train_l1_loss', 'train_psnr'])
+    
+    return tb_writer, csv_log_path
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, motion_net, motion_net_face, renderFunc, renderArgs):
+def training_report(tb_writer, csv_log_path, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, motion_net, motion_net_face, renderFunc, renderArgs):
+    # Initialize metrics for CSV logging
+    test_l1_loss = None
+    test_psnr = None
+    train_l1_loss = None
+    train_psnr = None
+    
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
@@ -364,8 +392,30 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 if tb_writer:
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
+                
+                # Store metrics for CSV logging
+                if config['name'] == 'test':
+                    test_l1_loss = float(l1_test)
+                    test_psnr = float(psnr_test)
+                elif config['name'] == 'train':
+                    train_l1_loss = float(l1_test)
+                    train_psnr = float(psnr_test)
 
         torch.cuda.empty_cache()
+    
+    # Write to CSV log file
+    with open(csv_log_path, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([
+            iteration,
+            float(Ll1.item()) if Ll1 is not None else '',
+            float(loss.item()) if loss is not None else '',
+            float(elapsed) if elapsed is not None else '',
+            test_l1_loss if test_l1_loss is not None else '',
+            test_psnr if test_psnr is not None else '',
+            train_l1_loss if train_l1_loss is not None else '',
+            train_psnr if train_psnr is not None else ''
+        ])
 
 if __name__ == "__main__":
     # Set up command line argument parser
@@ -383,8 +433,11 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     args = parser.parse_args(sys.argv[1:])
+    # Set default source_path if not provided or if it's just the current directory
+    if not hasattr(args, 'source_path') or args.source_path == '' or args.source_path == '.':
+        args.source_path = 'data/original'
     args.save_iterations.append(args.iterations)
-    
+
     print("Optimizing " + args.model_path)
 
     # Initialize system state (RNG)

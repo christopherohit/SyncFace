@@ -98,7 +98,7 @@ def storePly(path, xyz, rgb):
 
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".jpg", audio_file='', audio_extractor='deepspeech', N_views=-1, preload=True):
     cam_infos = []
-    postfix_dict = {"deepspeech": "", "esperanto": "_eo", "hubert": "_hu"}
+    postfix_dict = {"deepspeech": "ds", "esperanto": "eo", "hubert": "hu"}
     
     N_views = N_views if "train" in transformsfile and audio_file=='' else -1
 
@@ -142,7 +142,7 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
                     np.save(os.path.join(path, 'aud_ave.npy'), aud_features)
             # aud_features = np.load(os.path.join(self.root_path, 'aud_ave.npy'))
         elif audio_file == '':
-            aud_features = np.load(os.path.join(path, 'aud{}.npy'.format(postfix_dict[audio_extractor])))
+            aud_features = np.load(os.path.join(path, 'aud_{}.npy'.format(postfix_dict[audio_extractor])))
         else:
             aud_features = np.load(audio_file)
         aud_features = torch.from_numpy(aud_features)
@@ -155,6 +155,18 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             frames *= loop_time
         
 
+        # --- CODE MỚI (Đọc Blendshapes) ---
+        # Giả sử blendshapes.npy có shape [N_frames, 52]
+        if os.path.exists(os.path.join(path, 'bs.npy')):
+            blendshapes_all = np.load(os.path.join(path, 'bs.npy'))
+
+            # Chuẩn hóa nếu cần (ép về 0-1)
+            blendshapes_all = np.clip(blendshapes_all, 0.0, 1.0)
+        else:
+            print("ERROR: blendshapes.npy not found!")
+            sys.exit(1)
+
+        # Keep AU data for compatibility (au25, au_blink for training selection)
         au_info=pd.read_csv(os.path.join(path, 'au.csv'))
         au_blink = au_info[' AU45_r'].values
         au25 = au_info[' AU25_r'].values
@@ -263,6 +275,10 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             talking_dict['au25'] = [au25[frame['img_id']], au25_25, au25_50, au25_75, au25_100]
 
             talking_dict['au_exp'] = torch.as_tensor(au_exp[frame['img_id']])
+
+            # Gán Blendshapes vào dict
+            # Lưu ý: Chuyển sang Tensor và Float32
+            talking_dict['blendshapes'] = torch.from_numpy(blendshapes_all[frame['img_id']]).float()
 
 
             [xmin, xmax, ymin, ymax] = ldmks_lips[idx].tolist()

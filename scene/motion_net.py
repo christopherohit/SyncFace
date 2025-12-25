@@ -678,3 +678,109 @@ class PersonalizedMotionNetwork(nn.Module):
             params.append({'params': self.exp_encode_net.parameters(), 'name': 'neural_exp_encode_net', 'lr': lr_net, 'weight_decay': wd})
 
         return params
+
+
+class SyncFaceMotionNetwork(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
+        # INPUT DIMS
+        self.audio_dim = 32 # Hoặc kích thước feature của HuBERT/AVE
+        self.blendshape_dim = 52 # 52 tham số chuẩn ARKit
+        self.geo_feat_dim = 64   # Đặc trưng hình học tại điểm 3D (đầu ra của Tri-plane hoặc encoding)
+        self.hidden_dim = 64
+
+        # 1. ENCODERS
+        # Nhánh Audio
+        self.audio_encoder = nn.Sequential(
+            nn.Linear(self.audio_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim)
+        )
+
+        # Nhánh Blendshapes (Face)
+        self.face_encoder = nn.Sequential(
+            nn.Linear(self.blendshape_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim)
+        )
+
+        # 2. ATTENTION NETWORKS (Spatial Mask Predictors)
+        # Input: Tọa độ điểm 3D (xyz) hoặc Geometric Feature
+        # Output: 1 giá trị (Mask) từ 0 đến 1
+        self.audio_att_net = nn.Sequential(
+            nn.Linear(3, 32), # Input là xyz
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid() # Ép về [0, 1] -> Mask
+        )
+
+        self.face_att_net = nn.Sequential(
+            nn.Linear(3, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+
+        # 3. DEFORMATION DECODER
+        # Input: Feature đã trộn
+        self.decoder = nn.Sequential(
+            nn.Linear(self.hidden_dim * 2 + 3, 64), # +3 cho xyz gốc
+            nn.ReLU(),
+            nn.Linear(64, 3 + 4 + 1) # Output: d_xyz (3), d_rot (4), d_scale (1)
+        )
+
+    def forward(self, xyz, audio_emb, blendshapes):
+        # xyz: [N, 3] - Tọa độ các điểm Gaussian
+        # audio_emb: [1, 32] - Feature âm thanh
+        # blendshapes: [1, 52] - Tham số biểu cảm
+
+        N = xyz.shape[0]
+
+        # A. Encode Tín hiệu
+        feat_aud = self.audio_encoder(audio_emb) # [1, 64]
+        feat_face = self.face_encoder(blendshapes) # [1, 64]
+
+        # B. Tính Mask (Attention) tại từng điểm
+        # Mỗi điểm 3D sẽ có mask riêng
+        mask_aud = self.audio_att_net(xyz) # [N, 1]
+        mask_face = self.face_att_net(xyz) # [N, 1]
+
+        # C. Áp dụng Attention (Broadcasting)
+        # Nhân feature với mask tương ứng
+        # feat_aud (toàn cục) * mask_aud (cục bộ)
+        weighted_aud = feat_aud.repeat(N, 1) * mask_aud # [N, 64]
+        weighted_face = feat_face.repeat(N, 1) * mask_face # [N, 64]
+
+        # D. Ghép nối (Fusion)
+        # Kết hợp thông tin hình học + âm thanh đã lọc + biểu cảm đã lọc
+        fused_feat = torch.cat([xyz, weighted_aud, weighted_face], dim=-1) # [N, 3+64+64]
+
+        # E. Dự đoán Biến dạng (Deformation)
+        outputs = self.decoder(fused_feat)
+
+        d_xyz = outputs[:, :3]
+        d_rot = outputs[:, 3:7]
+        d_scale = outputs[:, 7:]
+
+        # F. Kẹp giá trị (Safety Clamp - Chống NaN)
+        d_xyz = torch.clamp(d_xyz, -0.1, 0.1)
+
+        return {
+            'd_xyz': d_xyz,
+            'd_rotation': d_rot,
+            'd_scaling': d_scale,
+            'mask_aud': mask_aud, # Trả về để visualize debug
+            'mask_face': mask_face
+        }
+
+    # optimizer utils
+    def get_params(self, lr, lr_net, wd=0):
+        params = [
+            {'params': self.audio_encoder.parameters(), 'lr': lr_net, 'weight_decay': wd},
+            {'params': self.face_encoder.parameters(), 'lr': lr_net, 'weight_decay': wd},
+            {'params': self.audio_att_net.parameters(), 'lr': lr_net, 'weight_decay': wd},
+            {'params': self.face_att_net.parameters(), 'lr': lr_net, 'weight_decay': wd},
+            {'params': self.decoder.parameters(), 'lr': lr_net, 'weight_decay': wd},
+        ]
+        return params
