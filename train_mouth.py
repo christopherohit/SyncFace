@@ -59,7 +59,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians = GaussianModel(dataset)
     scene = Scene(dataset, gaussians)
 
-    motion_net = SyncFaceMotionNetwork(args=dataset).cuda()
+    # Use the same motion network architecture as pretraining (MouthMotionNetwork)
+    motion_net = MouthMotionNetwork(args=dataset).cuda()
     motion_optimizer = torch.optim.AdamW(motion_net.get_params(5e-3, 5e-4), betas=(0.9, 0.99), eps=1e-8, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.LambdaLR(motion_optimizer, lambda iter: 0.1 if iter < warm_step else 0.5 ** (iter / opt.iterations))
     
@@ -205,7 +206,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         if iteration > warm_step:
             # loss += 1e-5 * (render_pkg['motion']['d_xyz'].abs()).mean()
-            loss += 1e-5 * (render_pkg['p_motion']['p_xyz'].abs()).mean()
+            
+            # ============================================================
+            # CANONICAL REGULARIZATION (if PersonalizedMotionNetwork is used)
+            # Removed p_xyz loss - now using canonical space regularization
+            # ============================================================
+            if render_pkg['p_motion'] is not None and 'x_canon' in render_pkg['p_motion']:
+                x_canon = render_pkg['p_motion']['x_canon']
+                canonical_reg_loss = 1e-3 * (x_canon - gaussians.get_xyz).pow(2).mean()
+                loss += canonical_reg_loss
+            
             loss += 1e-3 * (((1-alpha) * lips_mask).mean() + (alpha * ~lips_mask).mean())
 
         image_t = image_green.clone()

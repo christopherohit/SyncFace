@@ -1,0 +1,54 @@
+🚀 Complete Training Commands for Stage 2
+Prerequisites Check
+# Verify your data existsls /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/data/improve_v1/Shaheen# Verify Stage 1 checkpoints exist (these are VALID and will be used)ls /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/add__preprocessing_plus_attention/chkpnt_face_latest.pthls /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/add__preprocessing_plus_attention/chkpnt_mouth_latest.pth
+📋 Stage 2 Training Commands
+Step 1: Train Face Adaptation (with NEW Canonical Mapper)
+cd /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFacepython train_face.py \    --source_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/data/improve_v1/Shaheen \    --model_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/stage2_canonical/Shaheen_face \    --iterations 30000 \    --pretrain_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/add__preprocessing_plus_attention/chkpnt_face_latest.pth \    --audio_extractor deepspeech \    --type face
+Expected training time: ~6-8 hours on RTX 3090
+Step 2: Train Mouth Adaptation (with NEW Canonical Mapper)
+cd /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFacepython train_mouth.py \    --source_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/data/improve_v1/Shaheen \    --model_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/stage2_canonical/Shaheen_mouth \    --iterations 30000 \    --pretrain_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/add__preprocessing_plus_attention/chkpnt_mouth_latest.pth \    --audio_extractor deepspeech \    --type mouth
+Expected training time: ~6-8 hours on RTX 3090
+🎯 What Each Command Does
+Parameter	Value	Purpose
+--source_path	Your Shaheen data	Target person to adapt to
+--model_path	Output directory	Where to save new checkpoints
+--iterations	30000	Standard adaptation iterations
+--pretrain_path	Stage 1 checkpoint	Uses your existing Stage 1 weights ✅
+--audio_extractor	deepspeech	Audio feature type (match your Stage 1)
+--type	face/mouth	Network type
+📊 Training Progress Monitoring
+Watch Training in Real-Time
+# Open a new terminal and run:tensorboard --logdir /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/stage2_canonical# Then open in browser: http://localhost:6006
+Expected Loss Behavior
+Iteration 0-1000 (Warm-up):  - Total Loss: 0.1 → 0.05  - No canonical regularization yetIteration 1000-3000 (Canonical mapper learning):  - Total Loss: 0.05 → 0.02  - Canonical Reg: 1e-2 → 5e-3  ← Should decreaseIteration 3000-10000 (Refinement):  - Total Loss: 0.02 → 0.01  - Canonical Reg: 3e-3 → 1e-3  ← StabilizedIteration 10000-30000 (LPIPS refinement):  - Total Loss: 0.01 → 0.005  - Canonical Reg: ~1e-3  ← Stable
+🔍 Optional: Training with Custom Settings
+If you need to adjust settings:
+# Face training with custom learning rate (if unstable)python train_face.py \    --source_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/data/improve_v1/Shaheen \    --model_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/stage2_canonical/Shaheen_face \    --iterations 30000 \    --pretrain_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/add__preprocessing_plus_attention/chkpnt_face_latest.pth \    --audio_extractor deepspeech \    --type face \    --position_lr_init 0.00016 \    --position_lr_final 0.0000016 \    --feature_lr 0.0025 \    --opacity_lr 0.05 \    --scaling_lr 0.005 \    --rotation_lr 0.001
+💾 Output Structure
+After training completes, you'll have:
+output/stage2_canonical/├── Shaheen_face/│   ├── chkpnt_face_10000.pth    # Intermediate checkpoint│   ├── chkpnt_face_20000.pth    # Intermediate checkpoint│   ├── chkpnt_face_30000.pth    # Final checkpoint│   ├── chkpnt_face_latest.pth   # Latest checkpoint (same as 30000)│   ├── point_cloud/             # Saved Gaussian point clouds│   └── cfg_args                 # Config file│└── Shaheen_mouth/    ├── chkpnt_mouth_30000.pth   # Final checkpoint    ├── chkpnt_mouth_latest.pth  # Latest checkpoint    └── ...
+🎬 After Training: Inference/Rendering
+Once training is complete, you can generate animations:
+# Example inference command (adjust as needed)python render.py \    --model_path /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/stage2_canonical/Shaheen_face \    --checkpoint chkpnt_face_30000.pth \    --audio_path /path/to/test_audio.wav \    --output_path ./output_video.mp4
+🐛 Troubleshooting
+Issue: Out of Memory
+# Reduce batch size or use gradient checkpointing# Training will still work but may be slower
+Issue: NaN Losses
+# Edit train_face.py, increase canonical regularization:canonical_reg_loss = 5e-3 * (x_canon - gaussians.get_xyz).pow(2).mean()# Instead of 1e-3
+Issue: Training Too Slow
+# Enable CUDA optimizationsexport CUDA_VISIBLE_DEVICES=0export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+✅ Final Checklist
+Before running:
+[ ] Data directory exists and contains processed data
+[ ] Stage 1 checkpoints exist (face and mouth)
+[ ] Output directory has write permissions
+[ ] GPU has sufficient VRAM (~24GB recommended)
+[ ] train_face.py and train_mouth.py have canonical mapper updates ✅
+🎯 Summary
+Question	Answer
+Retrain Stage 1?	❌ NO - Use existing checkpoints
+Retrain Stage 2?	✅ YES - Required for canonical mapper
+Can use existing Stage 1 checkpoints?	✅ YES - Fully compatible
+Training time?	~6-8 hours per network (face + mouth = ~12-16 hours total)
+GPU requirement?	~24GB VRAM recommended
+Your Stage 1 checkpoints are golden - keep them and just retrain Stage 2! 🎉

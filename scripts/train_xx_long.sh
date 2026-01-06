@@ -1,9 +1,9 @@
 dataset=$1
 workspace=$2
 gpu_id=$3
-audio_extractor='ave' # deepspeech, esperanto, hubert
+audio_extractor='deepspeech' # deepspeech, esperanto, hubert
 
-pretrain_project_path="output/pretrain-ave/"
+pretrain_project_path="/media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/SyncFace/output/add__preprocessing_plus_attention    "
 
 pretrain_face_path=${pretrain_project_path}/chkpnt_ema_face_latest.pth
 pretrain_mouth_path=${pretrain_project_path}/chkpnt_ema_mouth_latest.pth

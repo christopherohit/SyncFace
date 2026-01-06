@@ -148,13 +148,15 @@ def render_motion(viewpoint_camera, pc : GaussianModel, motion_net : MotionNetwo
     
     xyz = pc.get_xyz
 
+    # ============================================================
+    # Canonical Mapping is now INTERNAL to PersonalizedMotionNetwork
+    # We query both networks with original identity space coordinates
+    # ============================================================
     if personalized or align:
         p_motion_preds = pc.neural_motion_grid(pc.get_xyz, audio_feat, exp_feat)
     
-    if align:
-        xyz = xyz + p_motion_preds['p_xyz']
-        # pass
-    
+    # Call universal motion network with identity space coords
+    # (PersonalizedMotionNetwork handles canonical mapping internally)
     motion_preds = motion_net(xyz, audio_feat, exp_feat)
     
     
@@ -163,13 +165,10 @@ def render_motion(viewpoint_camera, pc : GaussianModel, motion_net : MotionNetwo
     d_rot = motion_preds['d_rot']
         
     if personalized:
-        # d_xyz *= (1 + p_motion_preds['p_scale'])
+        # Combine deformations from both networks
         d_xyz += p_motion_preds['d_xyz']
         d_scale += p_motion_preds['d_scale']
         d_rot += p_motion_preds['d_rot']
-    
-    if align:
-        d_xyz *= p_motion_preds['p_scale']
         
     if detach_motion:
         d_xyz = d_xyz.detach()
@@ -205,7 +204,13 @@ def render_motion(viewpoint_camera, pc : GaussianModel, motion_net : MotionNetwo
     # Attn
     rendered_attn = p_rendered_attn = None
     if return_attn:
-        attn_precomp = torch.cat([motion_preds['ambient_aud'], motion_preds['ambient_eye'], torch.zeros_like(motion_preds['ambient_eye'])], dim=-1)
+        # Handle cases where ambient_eye might be None (e.g., for mouth-only training)
+        if motion_preds['ambient_eye'] is not None:
+            attn_precomp = torch.cat([motion_preds['ambient_aud'], motion_preds['ambient_eye'], torch.zeros_like(motion_preds['ambient_eye'])], dim=-1)
+        else:
+            # If no eye attention, use only audio attention
+            attn_precomp = torch.cat([motion_preds['ambient_aud'], torch.zeros_like(motion_preds['ambient_aud']), torch.zeros_like(motion_preds['ambient_aud'])], dim=-1)
+        
         rendered_attn, _, _, _, _, _ = rasterizer(
             means3D = means3D.detach(),
             means2D = means2D,
@@ -218,19 +223,25 @@ def render_motion(viewpoint_camera, pc : GaussianModel, motion_net : MotionNetwo
             extra_attrs = torch.ones_like(opacity)
         )
         
-        if personalized:
-            p_attn_precomp = torch.cat([p_motion_preds['ambient_aud'], p_motion_preds['ambient_eye'], torch.zeros_like(p_motion_preds['ambient_eye'])], dim=-1)
-            p_rendered_attn, _, _, _, _, _ = rasterizer(
-                means3D = means3D.detach(),
-                means2D = means2D,
-                shs = None,
-                colors_precomp = p_attn_precomp,
-                opacities = opacity.detach(),
-                scales = scales.detach(),
-                rotations = rotations.detach(),
-                cov3Ds_precomp = cov3D_precomp,
-                extra_attrs = torch.ones_like(opacity)
-            )
+        if personalized or align:
+            # Render attention map from personalized network if available
+            if p_motion_preds['ambient_aud'] is not None:
+                if p_motion_preds['ambient_eye'] is not None:
+                    p_attn_precomp = torch.cat([p_motion_preds['ambient_aud'], p_motion_preds['ambient_eye'], torch.zeros_like(p_motion_preds['ambient_eye'])], dim=-1)
+                else:
+                    p_attn_precomp = torch.cat([p_motion_preds['ambient_aud'], torch.zeros_like(p_motion_preds['ambient_aud']), torch.zeros_like(p_motion_preds['ambient_aud'])], dim=-1)
+                
+                p_rendered_attn, _, _, _, _, _ = rasterizer(
+                    means3D = means3D.detach(),
+                    means2D = means2D,
+                    shs = None,
+                    colors_precomp = p_attn_precomp,
+                    opacities = opacity.detach(),
+                    scales = scales.detach(),
+                    rotations = rotations.detach(),
+                    cov3Ds_precomp = cov3D_precomp,
+                    extra_attrs = torch.ones_like(opacity)
+                )
 
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
@@ -288,12 +299,11 @@ def render_motion_mouth_con(viewpoint_camera, pc : GaussianModel, motion_net : M
    
     xyz = pc.get_xyz
     
+    # ============================================================
+    # Canonical Mapping is now INTERNAL to PersonalizedMotionNetwork
+    # ============================================================
     if personalized or align:
         p_motion_preds = pc.neural_motion_grid(pc.get_xyz, audio_feat)
-
-    if align:
-        xyz = xyz + p_motion_preds['p_xyz']
-        # pass
     
     if not inference:
         exp_feat = viewpoint_camera.talking_dict["au_exp"].cuda()
@@ -316,7 +326,7 @@ def render_motion_mouth_con(viewpoint_camera, pc : GaussianModel, motion_net : M
     # d_rot = motion_preds['d_rot']
     
     if personalized:
-        # d_xyz *= (1 + p_motion_preds['p_scale'])
+        # Combine deformations from both networks
         d_xyz += p_motion_preds['d_xyz']
         # d_rot += p_motion_preds['d_rot']
                 

@@ -28,7 +28,9 @@ from arguments import ModelParams, PipelineParams, OptimizationParams
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
-except ImportError:
+except Exception as e:
+    # Handle protobuf compatibility errors and missing installs by disabling TB
+    print(f"Tensorboard not available ({e}); continuing without TB logging")
     TENSORBOARD_FOUND = False
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):

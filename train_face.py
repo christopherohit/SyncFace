@@ -196,14 +196,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             loss = Ll1 + opt.lambda_dssim * (1.0 - ssim(image_white, gt_image_white))
 
             if not mode_long and iteration > warm_step + 2000:
-                loss += 0.01 * (1 - viewpoint_cam.talking_dict["normal"].cuda() * render_pkg["normal"]).sum(0)[head_mask^mouth_mask].mean()
+                # Add normal loss only if normal data is available
+                if "normal" in viewpoint_cam.talking_dict:
+                    loss += 0.01 * (1 - viewpoint_cam.talking_dict["normal"].cuda() * render_pkg["normal"]).sum(0)[head_mask^mouth_mask].mean()
+                
                 if iteration % opt.opacity_reset_interval > 100:
-                    # depth_normal = depth_to_normal(viewpoint_cam, render_pkg["depth"]).permute(2,0,1)
-                    # loss += 0.001 * (1 - viewpoint_cam.talking_dict["normal"].cuda() * depth_normal).sum(0)[face_mask^mouth_mask].mean()
-                    
-                    depth = render_pkg["depth"][0]
-                    depth_mono = viewpoint_cam.talking_dict['depth'].cuda()
-                    loss += 1e-2 * (normalize(depth)[face_mask^mouth_mask] - normalize(depth_mono)[face_mask^mouth_mask]).abs().mean()
+                    # Add depth loss only if depth data is available
+                    if "depth" in viewpoint_cam.talking_dict:
+                        depth = render_pkg["depth"][0]
+                        depth_mono = viewpoint_cam.talking_dict['depth'].cuda()
+                        loss += 1e-2 * (normalize(depth)[face_mask^mouth_mask] - normalize(depth_mono)[face_mask^mouth_mask]).abs().mean()
                 
             # mouth_alpha_loss = 1e-2 * (alpha[:,mouth_mask]).mean()
             # if not torch.isnan(mouth_alpha_loss):
@@ -215,7 +217,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 loss += 1e-5 * (render_pkg['motion']['d_rot'].abs()).mean()
                 loss += 1e-5 * (render_pkg['motion']['d_opa'].abs()).mean()
                 loss += 1e-5 * (render_pkg['motion']['d_scale'].abs()).mean()
-                loss += 1e-5 * (render_pkg['p_motion']['p_xyz'].abs()).mean()
+                
+                # ============================================================
+                # CANONICAL REGULARIZATION
+                # Prevent degenerate canonical mapping by keeping it topologically
+                # similar to identity space (regularize deviation)
+                # ============================================================
+                if render_pkg['p_motion'] is not None and 'x_canon' in render_pkg['p_motion']:
+                    x_canon = render_pkg['p_motion']['x_canon']
+                    canonical_reg_loss = 1e-3 * (x_canon - gaussians.get_xyz).pow(2).mean()
+                    loss += canonical_reg_loss
 
                 loss += 1e-3 * (((1-alpha) * head_mask).mean() + (alpha * ~head_mask).mean())
 
@@ -300,16 +311,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             
             # bg prune
             if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                from utils.sh_utils import eval_sh
+                try:
+                    from utils.sh_utils import eval_sh
 
-                shs_view = gaussians.get_features.transpose(1, 2).view(-1, 3, (gaussians.max_sh_degree+1)**2)
-                dir_pp = (gaussians.get_xyz - viewpoint_cam.camera_center.repeat(gaussians.get_features.shape[0], 1))
-                dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
-                sh2rgb = eval_sh(gaussians.active_sh_degree, shs_view, dir_pp_normalized)
-                colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
+                    shs_view = gaussians.get_features.transpose(1, 2).view(-1, 3, (gaussians.max_sh_degree+1)**2)
+                    dir_pp = (gaussians.get_xyz - viewpoint_cam.camera_center.repeat(gaussians.get_features.shape[0], 1))
+                    dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
+                    sh2rgb = eval_sh(gaussians.active_sh_degree, shs_view, dir_pp_normalized)
+                    colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
 
-                bg_color_mask = (colors_precomp[..., 0] < 30/255) * (colors_precomp[..., 1] > 225/255) * (colors_precomp[..., 2] < 30/255)
-                gaussians.prune_points(bg_color_mask.squeeze())
+                    bg_color_mask = (colors_precomp[..., 0] < 30/255) * (colors_precomp[..., 1] > 225/255) * (colors_precomp[..., 2] < 30/255)
+                    gaussians.prune_points(bg_color_mask.squeeze())
+                except RuntimeError as e:
+                    print(f"[Warning] Skipping bg color pruning at iter {iteration} due to shape mismatch: {e}")
                 
                 if not mode_long:
                     gaussians.prune_points((gaussians.get_xyz[:, -1] < -0.07).squeeze())

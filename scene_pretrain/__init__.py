@@ -16,7 +16,7 @@ import json
 from utils.system_utils import searchForMaxIteration
 from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
-from scene.motion_net import MotionNetwork, MouthMotionNetwork, PersonalizedMotionNetwork
+from scene.motion_net import MotionNetwork, MouthMotionNetwork, PersonalizedMotionNetwork, PhonemeAwareMotionNetwork
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 
@@ -100,4 +100,4 @@ class Scene:
 
 # Import additional classes for pretrain scripts
 from scene.gaussian_model import GaussianModel
-from scene.motion_net import MouthMotionNetwork, MotionNetwork, PersonalizedMotionNetwork, SyncFaceMotionNetwork
+from scene.motion_net import MouthMotionNetwork, MotionNetwork, PersonalizedMotionNetwork, SyncFaceMotionNetwork, PhonemeAwareMotionNetwork

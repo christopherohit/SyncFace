@@ -573,7 +573,21 @@ class PersonalizedMotionNetwork(nn.Module):
         self.out_dim = 11 if args.type == 'face' else 7
         self.sigma_net = MLP(self.in_dim + self.audio_dim + self.eye_dim + self.individual_dim, self.out_dim, self.hidden_dim, self.num_layers)
         
-        self.align_net = MLP(self.in_dim, 6, self.hidden_dim, 2)
+        # ============================================================
+        # CANONICAL MAPPER: Maps identity space -> canonical space
+        # Replaces the old align_net for better disentanglement
+        # ============================================================
+        self.canonical_encoder, self.canonical_in_dim = get_encoder(
+            'hashgrid', 
+            input_dim=3, 
+            num_levels=12, 
+            level_dim=2, 
+            base_resolution=16, 
+            log2_hashmap_size=17, 
+            desired_resolution=256 * self.bound
+        )
+        # Lightweight MLP that outputs canonical coordinates (3D)
+        self.canonical_mlp = MLP(self.canonical_in_dim, 3, 32, 2)
 
         self.aud_ch_att_net = MLP(self.in_dim, self.audio_dim, 32, 2)
 
@@ -610,8 +624,20 @@ class PersonalizedMotionNetwork(nn.Module):
 
 
     def forward(self, x, a, e=None, c=None):
-        # x: [N, 3], in [-bound, bound]
-        enc_x = self.encode_x(x, bound=self.bound)
+        # x: [N, 3], in [-bound, bound] - Identity Space coordinates
+        
+        # ============================================================
+        # STEP 1: Map Identity Space -> Canonical Space
+        # This bijective mapping disentangles identity geometry from motion
+        # ============================================================
+        enc_canon = self.canonical_encoder(x, bound=self.bound)  # Encode identity coords
+        x_canon = self.canonical_mlp(enc_canon)  # Map to canonical space [N, 3]
+        
+        # ============================================================
+        # STEP 2: Query Universal Motion Field using Canonical Coordinates
+        # All subsequent operations use x_canon instead of x
+        # ============================================================
+        enc_x = self.encode_x(x_canon, bound=self.bound)
 
         enc_a = self.encode_audio(a)
         enc_a = enc_a.repeat(enc_x.shape[0], 1)
@@ -619,17 +645,24 @@ class PersonalizedMotionNetwork(nn.Module):
         enc_w = enc_a * aud_ch_att
         h = torch.cat([enc_x, enc_w], dim=-1)
 
-        if self.exp_eye:
+        if self.exp_eye and e is not None:
             eye_att = torch.relu(self.eye_att_net(enc_x))
             enc_e = self.exp_encode_net(e[:-1])
             enc_e = torch.cat([enc_e, e[-1:]], dim=-1)
             enc_e = enc_e * eye_att
             h = torch.cat([h, enc_e], dim=-1)
+        elif self.exp_eye and e is None:
+            # When exp_eye is enabled but e is not provided (e.g., mouth training)
+            # Add zero padding to match expected input size for sigma_net
+            h = torch.cat([h, torch.zeros(h.shape[0], self.eye_dim, device=h.device)], dim=-1)
+        
         if c is not None:
             c = c.repeat(enc_x.shape[0], 1)
             h = torch.cat([h, c], dim=-1)
 
-
+        # ============================================================
+        # STEP 3: Predict Deformation in Canonical Space
+        # ============================================================
         h = self.sigma_net(h)
 
         d_xyz = h[..., :3] * 1e-2
@@ -639,10 +672,6 @@ class PersonalizedMotionNetwork(nn.Module):
             d_scale = h[..., 8:11]
         else:
             d_opa = d_scale = None
-            
-        p = self.align_net(enc_x)
-        p_xyz = p[..., :3] * 1e-2
-        p_scale = torch.tanh(p[..., 3:] / 5) * 0.25 + 1
         
         return {
             'd_xyz': d_xyz,
@@ -650,9 +679,8 @@ class PersonalizedMotionNetwork(nn.Module):
             'd_opa': d_opa,
             'd_scale': d_scale,
             'ambient_aud' : aud_ch_att.norm(dim=-1, keepdim=True),
-            'ambient_eye' : eye_att.norm(dim=-1, keepdim=True) if self.exp_eye else None,
-            'p_xyz': p_xyz,
-            'p_scale': p_scale,
+            'ambient_eye' : eye_att.norm(dim=-1, keepdim=True) if (self.exp_eye and e is not None) else None,
+            'x_canon': x_canon,  # Return for regularization during training
         }
 
 
@@ -665,7 +693,9 @@ class PersonalizedMotionNetwork(nn.Module):
             {'params': self.encoder_yz.parameters(), 'name': 'neural_encoder_xy', 'lr': lr},
             {'params': self.encoder_xz.parameters(), 'name': 'neural_encoder_xy', 'lr': lr},
             {'params': self.sigma_net.parameters(), 'name': 'neural_sigma_net', 'lr': lr_net, 'weight_decay': wd},
-            {'params': self.align_net.parameters(), 'name': 'neural_align_net', 'lr': lr_net / 2, 'weight_decay': wd},
+            # Canonical Mapper parameters (replaces align_net)
+            {'params': self.canonical_encoder.parameters(), 'name': 'neural_canonical_encoder', 'lr': lr},
+            {'params': self.canonical_mlp.parameters(), 'name': 'neural_canonical_mlp', 'lr': lr_net, 'weight_decay': wd},
         ]
         params.append({'params': self.audio_att_net.parameters(), 'name': 'neural_audio_att_net', 'lr': lr_net * 5, 'weight_decay': 0.0001})
         if self.individual_dim > 0:
