@@ -595,7 +595,7 @@ class PersonalizedMotionNetwork(nn.Module):
     @staticmethod
     @torch.jit.script
     def split_xyz(x):
-        xy, yz, xz = x[:, :-1], x[:, 1:], torch.cat([x[:,:1], x[:,-1:]], dim=-1)
+        xy, yz, xz = x[:, :-1], x[:, 1:], torch.cat([x[:,:1], x[:,-1:]], dim=-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     1)
         return xy, yz, xz
 
 
