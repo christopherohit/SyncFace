@@ -1,0 +1,13 @@
+docker build -t openface -f docker/Dockerfile .
+docker run --rm --entrypoint="" algebr/openface find / -name "FeatureExtraction" -type f 2>/dev/null | head -5
+docker run --rm -v /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/Jae-in:/data --entrypoint="" algebr/openface /home/openface-build/build/bin/FeatureExtraction -f /data/Jae-in.mp4 -out_dir /data
+ls -la /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/Jae-in/*.csv
+mv /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/Jae-in/Jae-in.csv /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/Jae-in/au.csv
+
+
+
+for name in Macron May Obama1; do
+  echo "Processing $name..."
+  docker run --rm -v /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/$name:/data --entrypoint="" algebr/openface /home/openface-build/build/bin/FeatureExtraction -f /data/$name.mp4 -out_dir /data
+  mv /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/$name/$name.csv /media/sdb/working/llm_voice/explo/nhanhuynh/EvaluateQA/expNeRF/InsTaG/data/pretrain/$name/au.csv
+done

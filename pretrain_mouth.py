@@ -33,7 +33,7 @@ except ImportError:
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     data_list = [
-        "macron", "shaheen", "may", "jaein", "obama1" 
+        "Macron", "Jae-in", "Obama1", "Lieu", "May"
     ]
 
     testing_iterations = [i * len(data_list) for i in range(0, opt.iterations + 1, 2000)]
