@@ -100,6 +100,6 @@ if __name__ == "__main__":
     parser = configargparse.ArgumentParser()
     parser.add_argument('--respath', type=str, default='./result/', help='result path for label')
     parser.add_argument('--imgpath', type=str, default='./imgs/', help='path for input images')
-    parser.add_argument('--modelpath', type=str, default='data_utils/face_parsing/79999_iter.pth')
+    parser.add_argument('--modelpath', type=str, default='data_utils_enhancement/face_parsing/79999_iter.pth')
     args = parser.parse_args()
     evaluate(respth=args.respath, dspth=args.imgpath, cp=args.modelpath)
