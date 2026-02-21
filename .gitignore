@@ -87,3 +87,4 @@ data/*
 *.gpuserver*
 cfg_*
 *.ply
+data_utils/*
