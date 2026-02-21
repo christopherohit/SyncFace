@@ -67,9 +67,10 @@ def run_process_for_video(video_path: str, task: int = -1, asr: str = 'ave') -> 
         Tuple of (video_path, success, message)
     """
     try:
-        # Change to SyncFace directory
+        # Change to SyncFace root directory (parent of tools/)
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(script_dir)
+        syncface_dir = os.path.dirname(script_dir)  # Go up one level from tools/
+        os.chdir(syncface_dir)
         
         # Build command
         cmd = [
@@ -152,7 +153,7 @@ Examples:
     parser.add_argument('--task', type=int, default=-1,
                         help='Task number (-1 for all, 1-10 for specific task, default: -1)')
     parser.add_argument('--asr', type=str, default='ave',
-                        choices=['ave', 'hubert', 'deepspeech'],
+                        choices=['ave', 'hubert', 'deepspeech', 'wav2vec'],
                         help='Audio feature extractor (default: ave)')
     parser.add_argument('--parallel', type=int, default=1,
                         help='Number of parallel processes (default: 1, sequential)')

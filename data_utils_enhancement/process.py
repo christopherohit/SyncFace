@@ -24,10 +24,13 @@ def extract_audio_features(path, mode='ave'):
     if mode == 'ave':
         print(f'AVE has been integrated into the training code, no need to extract audio features')
     elif mode == "deepspeech": # deepspeech
-        cmd = f'python data_utils/deepspeech_features/extract_ds_features.py --input {path}'
+        cmd = f'python data_utils_enhancement/deepspeech_features/extract_ds_features.py --input {path}'
         os.system(cmd)
     elif mode == 'hubert':
-        cmd = f'python data_utils/hubert.py --wav {path}' # save to data/<name>_hu.npy
+        cmd = f'python data_utils_enhancement/hubert.py --wav {path}' # save to data/<name>_hu.npy
+        os.system(cmd)
+    elif mode == 'wav2vec' or mode == 'w2v':
+        cmd = f'python data_utils_enhancement/wav2vec.py --wav {path} --save_feats' # save to data/<name>_eo.npy
         os.system(cmd)
     print(f'[INFO] ===== extracted audio labels =====')
 
@@ -43,7 +46,7 @@ def extract_images(path, out_path, fps=25):
 def extract_semantics(ori_imgs_dir, parsing_dir):
 
     print(f'[INFO] ===== extract semantics from {ori_imgs_dir} to {parsing_dir} =====')
-    cmd = f'python data_utils/face_parsing/test.py --respath={parsing_dir} --imgpath={ori_imgs_dir}'
+    cmd = f'python data_utils_enhancement/face_parsing/test.py --respath={parsing_dir} --imgpath={ori_imgs_dir}'
     os.system(cmd)
     print(f'[INFO] ===== extracted semantics =====')
 
@@ -253,7 +256,7 @@ def face_tracking(ori_imgs_dir):
     tmp_image = cv2.imread(image_paths[0], cv2.IMREAD_UNCHANGED) # [H, W, 3]
     h, w = tmp_image.shape[:2]
 
-    cmd = f'python data_utils/face_tracking/face_tracker.py --path={ori_imgs_dir} --img_h={h} --img_w={w} --frame_num={len(image_paths)}'
+    cmd = f'python data_utils_enhancement/face_tracking/face_tracker.py --path={ori_imgs_dir} --img_h={h} --img_w={w} --frame_num={len(image_paths)}'
 
     os.system(cmd)
 
@@ -279,7 +282,7 @@ def extract_flow(base_dir,ori_imgs_dir,mask_dir, flow_dir):
                        base_dir + '/ori_imgs/' + '{:d}.jpg '.format(i) +
                        base_dir + '/face_mask/' + '{:d}.png\n'.format(i))
         file.close()
-    ext_flow_cmd = 'python data_utils/UNFaceFlow/test_flow.py --datapath=' + base_dir + '/flow_list.txt ' + \
+    ext_flow_cmd = 'python data_utils_enhancement/UNFaceFlow/test_flow.py --datapath=' + base_dir + '/flow_list.txt ' + \
         '--savepath=' + base_dir + '/flow_result' + \
         ' --width=' + str(w) + ' --height=' + str(h)
     os.system(ext_flow_cmd)
@@ -349,13 +352,13 @@ def extract_flow(base_dir,ori_imgs_dir,mask_dir, flow_dir):
             track_xys[i, j, 1] = y + flow[1, y, x]
     np.save(os.path.join(base_dir, 'track_xys.npy'), track_xys)
 
-    pose_opt_cmd = 'python data_utils/face_tracking/bundle_adjustment.py --path=' + base_dir + ' --img_h=' + \
+    pose_opt_cmd = 'python data_utils_enhancement/face_tracking/bundle_adjustment.py --path=' + base_dir + ' --img_h=' + \
         str(h) + ' --img_w=' + str(w)
     os.system(pose_opt_cmd)
 
 def extract_blendshape(base_dir):
     print(f'[INFO] ===== extract blendshape =====')
-    blendshape_cmd = 'python data_utils/blendshape_capture/main.py --path=' + base_dir
+    blendshape_cmd = 'python data_utils_enhancement/blendshape_capture/main.py --path=' + base_dir
     os.system(blendshape_cmd)
 
 
@@ -419,7 +422,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str, help="path to video file")
     parser.add_argument('--task', type=int, default=-1, help="-1 means all")
-    parser.add_argument('--asr', type=str, default='ave', help="ave, hubert or deepspeech")
+    parser.add_argument('--asr', type=str, default='ave', help="ave, hubert, deepspeech or wav2vec/w2v")
 
 
     opt = parser.parse_args()

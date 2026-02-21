@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 def infer_bs(root_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    base_options = python.BaseOptions(model_asset_path="./data_utils/blendshape_capture/face_landmarker.task")
+    base_options = python.BaseOptions(model_asset_path="./data_utils_enhancement/blendshape_capture/face_landmarker.task")
     options = vision.FaceLandmarkerOptions(base_options=base_options,
                                            output_face_blendshapes=True,
                                            output_facial_transformation_matrixes=True,

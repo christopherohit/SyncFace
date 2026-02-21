@@ -68,19 +68,20 @@ def find_data_folders(path: str) -> List[str]:
 def _run_sapiens_single(data_folder: str, script_type: str, gpu_id: int) -> Tuple[str, bool, str]:
     """Run a single sapiens script (depth or normal)."""
     try:
+        # Get paths - tools/ is one level below SyncFace root
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(script_dir)
+        syncface_root = os.path.dirname(script_dir)  # Go up from tools/ to SyncFace root
         
         gt_imgs_path = os.path.join(data_folder, 'gt_imgs')
         
         if script_type == 'depth':
-            script_path = 'data_utils_enhancement/sapiens/lite/scripts/depth.sh'
+            script_path = os.path.join(syncface_root, 'data_utils_enhancement/sapiens/lite/scripts/depth.sh')
             script_name = 'depth'
         else:
-            script_path = 'data_utils_enhancement/sapiens/lite/scripts/normal.sh'
+            script_path = os.path.join(syncface_root, 'data_utils_enhancement/sapiens/lite/scripts/normal.sh')
             script_name = 'normal'
         
-        # Modify the script to use the specified GPU
+        # Modify the script to use the specified GPU and fix paths
         script_content = []
         with open(script_path, 'r') as f:
             for line in f:
@@ -89,6 +90,9 @@ def _run_sapiens_single(data_folder: str, script_type: str, gpu_id: int) -> Tupl
                     script_content.append(f'VALID_GPU_IDS=({gpu_id})\n')
                 elif 'TOTAL_GPUS=' in line and 'VALID_GPU_IDS' not in line:
                     script_content.append('TOTAL_GPUS=1; VALID_GPU_IDS=(0)\n')
+                elif 'data_utils/sapiens' in line:
+                    # Fix the path from data_utils to data_utils_enhancement
+                    script_content.append(line.replace('data_utils/sapiens', 'data_utils_enhancement/sapiens'))
                 else:
                     script_content.append(line)
         
@@ -113,7 +117,8 @@ def _run_sapiens_single(data_folder: str, script_type: str, gpu_id: int) -> Tupl
             cmd,
             capture_output=False,
             text=True,
-            env=env
+            env=env,
+            cwd=syncface_root
         )
         
         # Clean up temp script
@@ -157,9 +162,6 @@ def run_sapiens_for_folder(data_folder: str, process_type: str = 'all',
         Tuple of (folder_path, success, message)
     """
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(script_dir)
-        
         gt_imgs_path = os.path.join(data_folder, 'gt_imgs')
         
         # Build the sapiens run command based on process_type
