@@ -1,0 +1,1 @@
+Namespace(sh_degree=2, source_path='/path/to/data/subject', model_path='output/sm3d_subject', images='images', resolution=-1, white_background=False, data_device='cpu', eval=False, audio='', init_num=2000, N_views=-1, audio_extractor='ave', type='face', preload=True, all_for_train=False)
