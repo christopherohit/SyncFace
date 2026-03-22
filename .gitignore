@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Local package builds (freqencoder, gridencoder, shencoder, raymarching)
+build/
+dist/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# PyTorch / ML weights and checkpoints (usually large)
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.onnx
+
+# MediaPipe and similar bundled models
+*.task
+
+# Video / audio (datasets; allow small demo files)
+*.mp4
+!demo/*.mp4
+*.avi
+*.mov
+*.mkv
+*.wav
+!demo/*.wav
+
+# Archives often used for data/model drops
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# 3DMM / tracking assets (morphable models and bulky geometry)
+data_utils/face_tracking/3DMM/*.mat
+data_utils/face_tracking/3DMM/*.npy
+data_utils/face_tracking/3DMM/*.obj
+
+# Training / experiment outputs
+wandb/
+runs/
+logs/
+*.log
+checkpoints/
+experiments/
+outputs/
+
+# Coverage / test caches
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
