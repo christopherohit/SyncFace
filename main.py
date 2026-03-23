@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import subprocess
 import sys
@@ -46,6 +47,18 @@ if __name__ == '__main__':
     parser.add_argument('--unc_loss', type=int, default=1, help="use uncertainty loss")
     parser.add_argument('--lambda_amb', type=float, default=1e-4, help="lambda for ambient loss")
     parser.add_argument('--pyramid_loss', type=int, default=0, help="use perceptual loss")
+
+    ### Option B: temporal consistency
+    parser.add_argument('--temporal_loss', type=int, default=1, help="use temporal consistency loss")
+    parser.add_argument('--lambda_temporal', type=float, default=0.1, help="weight for temporal loss")
+    parser.add_argument('--lambda_sync', type=float, default=0.0, help="placeholder for compat")
+    parser.add_argument('--lr_schedule', type=str, default='cosine', choices=['exponential', 'cosine'], help="LR schedule type")
+    parser.add_argument('--lr_warmup_steps', type=int, default=2000, help="warmup steps for cosine schedule")
+
+    ### early stopping
+    parser.add_argument('--early_stop', action='store_true', help="enable early stopping")
+    parser.add_argument('--early_stop_patience', type=int, default=10, help="early stopping patience (epochs)")
+    parser.add_argument('--early_stop_min_delta', type=float, default=1e-4, help="minimum improvement")
 
     ### network backbone options
     parser.add_argument('--fp16', action='store_true', help="use amp mixed precision training")
@@ -231,6 +244,15 @@ if __name__ == '__main__':
         # decay to 0.1 * init_lr at last iter step
         if opt.finetune_lips:
             scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.05 ** (iter / opt.iters))
+        elif getattr(opt, 'lr_schedule', 'exponential') == 'cosine':
+            warmup = getattr(opt, 'lr_warmup_steps', 2000)
+            total = opt.iters
+            def _cosine_warmup(step, _w=warmup, _t=total, _lr=opt.lr):
+                if step < _w:
+                    return step / max(1, _w)
+                progress = (step - _w) / max(1, _t - _w)
+                return max(1e-6 / _lr, 0.5 * (1.0 + math.cos(math.pi * progress)))
+            scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, _cosine_warmup)
         else:
             scheduler = lambda optimizer: optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.5 ** (iter / opt.iters))
 

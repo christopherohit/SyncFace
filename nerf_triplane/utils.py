@@ -27,6 +27,8 @@ from packaging import version as pver
 import imageio
 import lpips
 
+from .temporal_loss import TemporalConsistencyLoss
+
 def custom_meshgrid(*args):
     # ref: https://pytorch.org/docs/stable/generated/torch.meshgrid.html?highlight=meshgrid#torch.meshgrid
     if pver.parse(torch.__version__) < pver.parse('1.10'):
@@ -698,6 +700,22 @@ class Trainer(object):
             # self.criterion_lpips_vgg = lpips.LPIPS(net='vgg').to(self.device)
             self.criterion_lpips_alex = lpips.LPIPS(net='alex').to(self.device)
 
+        # Option B: temporal consistency loss
+        self.temporal_loss_fn = None
+        if getattr(self.opt, 'temporal_loss', 0) and not self.opt.torso:
+            self.temporal_loss_fn = TemporalConsistencyLoss(
+                warmup_steps=getattr(self.opt, 'warmup_step', 5000),
+                lambda_temporal=getattr(self.opt, 'lambda_temporal', 0.1),
+            ).to(self.device)
+
+        # Early stopping state
+        self.early_stop = getattr(self.opt, 'early_stop', False)
+        self.early_stop_patience = getattr(self.opt, 'early_stop_patience', 10)
+        self.early_stop_min_delta = getattr(self.opt, 'early_stop_min_delta', 1e-4)
+        self.early_stop_counter = 0
+        self.early_stop_best_loss = float('inf')
+        self.early_stopped = False
+
         # variable init
         self.epoch = 0
         self.global_step = 0
@@ -958,6 +976,11 @@ class Trainer(object):
             
             loss += reg_loss * lambda_reg
 
+        # Option B: temporal consistency loss
+        if self.temporal_loss_fn is not None:
+            t_loss = self.temporal_loss_fn(pred_rgb, face_mask, self.global_step)
+            loss = loss + t_loss
+
         return pred_rgb, rgb, loss
 
 
@@ -1074,6 +1097,20 @@ class Trainer(object):
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)
                 self.save_checkpoint(full=False, best=True)
+
+                # Early stopping check
+                if self.early_stop and len(self.stats["valid_loss"]) > 0:
+                    current_loss = self.stats["valid_loss"][-1]
+                    if current_loss < self.early_stop_best_loss - self.early_stop_min_delta:
+                        self.early_stop_best_loss = current_loss
+                        self.early_stop_counter = 0
+                    else:
+                        self.early_stop_counter += 1
+                        self.log(f"[EarlyStopping] No improvement for {self.early_stop_counter}/{self.early_stop_patience} epochs (best={self.early_stop_best_loss:.6f}, current={current_loss:.6f})")
+                    if self.early_stop_counter >= self.early_stop_patience:
+                        self.log(f"[EarlyStopping] Stopping at epoch {self.epoch}. Best val loss: {self.early_stop_best_loss:.6f}")
+                        self.early_stopped = True
+                        break
 
             if self.workspace is not None and self.local_rank == 0:
                 review_dir = os.path.join(self.workspace, "epoch_reviews", f"ep{self.epoch:04d}")
