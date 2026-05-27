@@ -1,0 +1,11 @@
+log: /home/nhanhuynh2/code/self-research/Syncfacev2/model/trial_may_fullarch/log_ngp.txt
+csv: /home/nhanhuynh2/code/self-research/Syncfacev2/model/trial_may_fullarch/eval_metrics.csv
+split: val
+
+Best checkpoint per metric:
+- val_loss (min): epoch=10 value=0.011290 ckpt=model/trial_may_fullarch/checkpoints/ngp_ep0010.pth
+- PSNR (max): epoch=10 value=32.289742 ckpt=model/trial_may_fullarch/checkpoints/ngp_ep0010.pth
+- LPIPS_alex (min): epoch=11 value=0.074215 ckpt=model/trial_may_fullarch/checkpoints/ngp_ep0011.pth
+- LMD_fan (min): epoch=10 value=2.939012 ckpt=model/trial_may_fullarch/checkpoints/ngp_ep0010.pth
+
+Balanced checkpoint: epoch=10 score=0.999581 ckpt=model/trial_may_fullarch/checkpoints/ngp_ep0010.pth

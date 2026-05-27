@@ -27,7 +27,14 @@ from packaging import version as pver
 import imageio
 import lpips
 
-from .temporal_loss import TemporalConsistencyLoss
+from .losses import (
+    TemporalConsistencyLoss,
+    DSSIMLoss,
+    EmbeddingSmoothnessLoss,
+    EikonalDensityLoss,
+    LipSyncLoss,
+)
+from .modules import head_pose_smoothness_loss
 
 def custom_meshgrid(*args):
     # ref: https://pytorch.org/docs/stable/generated/torch.meshgrid.html?highlight=meshgrid#torch.meshgrid
@@ -708,6 +715,27 @@ class Trainer(object):
                 lambda_temporal=getattr(self.opt, 'lambda_temporal', 0.1),
             ).to(self.device)
 
+        # Full-architecture additions (all default-off via lambda=0).
+        self.dssim_loss_fn = DSSIMLoss(
+            lambda_dssim=getattr(self.opt, 'lambda_dssim', 0.0),
+        ).to(self.device)
+        self.embsmooth_loss_fn = EmbeddingSmoothnessLoss(
+            lambda_embsmooth=getattr(self.opt, 'lambda_embsmooth', 0.0),
+        ).to(self.device)
+        self.geom_loss_fn = EikonalDensityLoss(
+            lambda_geom=getattr(self.opt, 'lambda_geom', 0.0),
+        ).to(self.device)
+        self.lipsync_loss_fn = LipSyncLoss(
+            lambda_lipsync=getattr(self.opt, 'lambda_lipsync', 0.0),
+        ).to(self.device)
+        if getattr(self.opt, 'lipsync_ckpt', ''):
+            try:
+                self.lipsync_loss_fn.load_syncnet(self.opt.lipsync_ckpt)
+                self.log(f"[INFO] Loaded lip-sync checkpoint from {self.opt.lipsync_ckpt}")
+            except Exception as e:
+                self.log(f"[WARN] Failed to load lip-sync checkpoint: {e}; lip-sync loss will be disabled.")
+        self.lambda_stab = float(getattr(self.opt, 'lambda_stab', 0.0))
+
         # Early stopping state
         self.early_stop = getattr(self.opt, 'early_stop', False)
         self.early_stop_patience = getattr(self.opt, 'early_stop_patience', 10)
@@ -826,6 +854,14 @@ class Trainer(object):
 
     def train_step(self, data):
 
+        # Coarse->fine progress for hash-grid level masking inside NeRFNetwork.
+        cf_warmup = int(getattr(self.opt, 'coarse_fine_warmup', 0))
+        if cf_warmup > 0:
+            progress = min(1.0, max(0.0, self.global_step / float(cf_warmup)))
+        else:
+            progress = 1.0
+        self.model.cf_progress = self.model.cf_progress.new_tensor(progress)
+
         rays_o = data['rays_o'] # [B, N, 3]
         rays_d = data['rays_d'] # [B, N, 3]
         bg_coords = data['bg_coords'] # [1, N, 2]
@@ -903,6 +939,13 @@ class Trainer(object):
 
             loss = loss + 0.1 * loss_lpips
 
+            # D-SSIM (lambda=0 by default -> exact zero, no extra cost beyond a tensor allocation)
+            if self.dssim_loss_fn.lambda_dssim > 0:
+                # convert patches from [-1, 1] back to [0, 1] for SSIM
+                pred01 = (pred_rgb + 1.0) * 0.5
+                gt01 = (rgb + 1.0) * 0.5
+                loss = loss + self.dssim_loss_fn(pred01, gt01)
+
         # lips finetune
         if self.opt.finetune_lips:
             xmin, xmax, ymin, ymax = data['rect']
@@ -968,13 +1011,28 @@ class Trainer(object):
             lambda_reg = step_factor * 1e-5
             reg_loss = 0
             if self.opt.unc_loss:
-                reg_loss += self.criterion(unc_raw, unc_reg).mean() 
+                reg_loss += self.criterion(unc_raw, unc_reg).mean()
             if self.opt.amb_aud_loss:
                 reg_loss += self.criterion(ambient_aud_raw, ambient_aud_reg).mean()
             if self.opt.amb_eye_loss:
                 reg_loss += self.criterion(ambient_eye_raw, ambient_eye_reg).mean()
-            
+
             loss += reg_loss * lambda_reg
+
+            # Geometry / Eikonal-style density regularizer — reuses the
+            # finite-sample pair already drawn above.
+            if self.geom_loss_fn.lambda_geom > 0:
+                loss = loss + self.geom_loss_fn(sigmas_raw, sigmas_reg, xyz_delta)
+
+        # Audio embedding smoothness: penalize large step-to-step jumps in enc_a.
+        if self.embsmooth_loss_fn.lambda_embsmooth > 0:
+            enc_a_for_smooth = outputs['rays'][2]  # (xyzs, dirs, enc_a, ind_code, eye)
+            loss = loss + self.embsmooth_loss_fn(enc_a_for_smooth)
+
+        # Head-pose stability (only meaningful when poses are being optimized).
+        if self.lambda_stab > 0 and getattr(self.opt, 'train_camera', False):
+            stab = head_pose_smoothness_loss(poses)
+            loss = loss + self.lambda_stab * stab
 
         # Option B: temporal consistency loss
         if self.temporal_loss_fn is not None:

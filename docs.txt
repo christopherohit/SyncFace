@@ -1,0 +1,75 @@
+Here's a clean run sequence for the May dataset using the new architecture flags. Activate the env first.
+
+# one-time: activate the env you already have set up
+conda activate syncfacev2
+cd /home/nhanhuynh2/code/self-research/Syncfacev2
+
+DATA=/raid/nobackup/llm_voice/data_syncFace/data_for_synctalk/May
+WS=model/trial_may_fullarch        # new workspace, won't collide with model/trial_may2
+ASR=ave
+
+1. Smoke test (verify branch, no behavior change)
+ 
+Confirms the refactor + new flags don't alter the baseline. Same as the original train_may.sh Stage 1 but on the new branch.
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace $WS -O \
+  --iters 60000 --asr_model $ASR --preload 1
+
+2. Stage B with the new full-architecture losses (recommended training run)
+
+Coarse→fine triplane warmup + D-SSIM + audio-embedding smoothness + Eikonal-style density reg, on top of existing L1/LPIPS/temporal.
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace $WS -O \
+  --iters 60000 --asr_model $ASR --preload 1 \
+  --coarse_fine_warmup 8000 \
+  --lambda_dssim 0.2 \
+  --lambda_embsmooth 0.05 \
+  --lambda_geom 1e-4 \
+  --temporal_loss 1 --lambda_temporal 0.1 \
+  --early_stop --early_stop_patience 8
+
+3. Lips fine-tune phase (mirrors original recipe, with new losses still on)
+
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace $WS -O \
+  --iters 100000 --finetune_lips --patch_size 64 --asr_model $ASR --preload 1 \
+  --lambda_dssim 0.1 \
+  --lambda_embsmooth 0.05 \
+  --lambda_geom 1e-4
+
+4. (Optional) Lip-sync loss — only if you have a SyncNet checkpoint
+
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace $WS -O \
+  --iters 100000 --finetune_lips --patch_size 64 --asr_model $ASR --preload 1 \
+  --lambda_lipsync 0.1 --lipsync_ckpt /path/to/syncnet.pt
+(Without --lipsync_ckpt, the loss is a no-op — safe to leave the flag in.)
+
+5. Evaluate on the test split
+
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace $WS -O \
+  --test --asr_model $ASR --portrait
+
+6. Inference with a new audio (.wav)
+
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace $WS -O \
+  --test --test_train --asr_model $ASR --portrait \
+  --aud ./demo/test.wav \
+  --seam_feather 7
+Add --sr if GFPGAN is installed for optional super-resolution.
+
+7. (Optional) Torso training — fixes the double-chin artifact
+
+HEAD_CKPT=$(ls -t $WS/checkpoints/ngp_ep*.pth | head -1)
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace ${WS}_torso -O \
+  --torso --head_ckpt $HEAD_CKPT --iters 150000 --asr_model $ASR --preload 1
+
+CUDA_VISIBLE_DEVICES=0 python main.py $DATA --workspace ${WS}_torso -O \
+  --torso --test --asr_model $ASR
+
+8. (Optional) Run new unit tests as a pre-flight
+
+python -m unittest tests.test_full_arch_losses tests.test_pipeline_b
+
+Notes
+- --preload 1 keeps frames in CPU RAM; bump to 2 if your GPU has the headroom.
+- Every --lambda_* flag I added defaults to 0, so you can ablate by toggling one at a time. Suggested order to tune: coarse_fine_warmup → lambda_dssim → lambda_embsmooth → lambda_geom, then --lambda_lipsync once you wire a SyncNet checkpoint.
+- --stage a and --motion_prior are wired but the multi-identity training loop is the next PR; don't pass --stage a yet (it raises NotImplementedError on purpose).
+
+✻ Cogitated for 33s

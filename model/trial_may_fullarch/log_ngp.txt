@@ -1,0 +1,224 @@
+[INFO] Trainer: ngp | 2026-04-28_14-11-08 | cuda | fp16 | model/trial_may_fullarch
+[INFO] #parameters: 768165
+[INFO] Loading latest checkpoint ...
+[WARN] No checkpoint found, model randomly initialized.
+==> Start Training Epoch 1, lr=0.000000 ...
+loss=0.0215
+==> Finished Epoch 1.
+++> Evaluate at epoch 1 ...
+PSNR = 30.109464
+LPIPS (alex) = 0.118106
+LMD (fan) = 3.888910
+++> Evaluate epoch 1 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0001
+==> Finished Test.
+==> Start Training Epoch 2, lr=0.000991 ...
+loss=0.0177
+==> Finished Epoch 2.
+++> Evaluate at epoch 2 ...
+PSNR = 31.955832
+LPIPS (alex) = 0.089158
+LMD (fan) = 3.308047
+++> Evaluate epoch 2 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0002
+==> Finished Test.
+==> Start Training Epoch 3, lr=0.000941 ...
+loss=0.0390
+==> Finished Epoch 3.
+++> Evaluate at epoch 3 ...
+PSNR = 32.077226
+LPIPS (alex) = 0.085280
+LMD (fan) = 3.160497
+++> Evaluate epoch 3 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0003
+==> Finished Test.
+==> Start Training Epoch 4, lr=0.000852 ...
+loss=0.0387
+==> Finished Epoch 4.
+++> Evaluate at epoch 4 ...
+PSNR = 32.103663
+LPIPS (alex) = 0.082809
+LMD (fan) = 3.123161
+++> Evaluate epoch 4 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0004
+==> Finished Test.
+==> Start Training Epoch 5, lr=0.000732 ...
+loss=0.0384
+==> Finished Epoch 5.
+++> Evaluate at epoch 5 ...
+PSNR = 32.085995
+LPIPS (alex) = 0.080804
+LMD (fan) = 3.122815
+++> Evaluate epoch 5 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0005
+==> Finished Test.
+==> Start Training Epoch 6, lr=0.000592 ...
+loss=0.0382
+==> Finished Epoch 6.
+++> Evaluate at epoch 6 ...
+PSNR = 32.001556
+LPIPS (alex) = 0.078689
+LMD (fan) = 3.055193
+++> Evaluate epoch 6 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0006
+==> Finished Test.
+==> Start Training Epoch 7, lr=0.000443 ...
+loss=0.0381
+==> Finished Epoch 7.
+++> Evaluate at epoch 7 ...
+PSNR = 32.101716
+LPIPS (alex) = 0.077120
+LMD (fan) = 3.020910
+++> Evaluate epoch 7 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0007
+==> Finished Test.
+==> Start Training Epoch 8, lr=0.000299 ...
+loss=0.0379
+==> Finished Epoch 8.
+++> Evaluate at epoch 8 ...
+PSNR = 32.143070
+LPIPS (alex) = 0.076259
+LMD (fan) = 2.986241
+++> Evaluate epoch 8 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0008
+==> Finished Test.
+==> Start Training Epoch 9, lr=0.000173 ...
+loss=0.0378
+==> Finished Epoch 9.
+++> Evaluate at epoch 9 ...
+PSNR = 32.221453
+LPIPS (alex) = 0.075419
+LMD (fan) = 2.982332
+++> Evaluate epoch 9 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0009
+==> Finished Test.
+==> Start Training Epoch 10, lr=0.000076 ...
+loss=0.0377
+==> Finished Epoch 10.
+++> Evaluate at epoch 10 ...
+PSNR = 32.289742
+LPIPS (alex) = 0.074422
+LMD (fan) = 2.939012
+++> Evaluate epoch 10 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0010
+==> Finished Test.
+==> Start Training Epoch 11, lr=0.000017 ...
+loss=0.0377
+==> Finished Epoch 11.
+++> Evaluate at epoch 11 ...
+PSNR = 32.286227
+LPIPS (alex) = 0.074215
+LMD (fan) = 2.953449
+++> Evaluate epoch 11 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0011
+==> Finished Test.
+++> Evaluate at epoch 11 ...
+PSNR = 32.543373
+LPIPS (alex) = 0.075533
+LMD (fan) = 2.896530
+++> Evaluate epoch 11 Finished.
+==> Start Test, save results to model/trial_may_fullarch/results
+==> Finished Test.
+[INFO] Trainer: ngp | 2026-04-28_19-05-00 | cuda | fp16 | model/trial_may_fullarch
+[INFO] #parameters: 768165
+[INFO] Loading latest checkpoint ...
+[INFO] Latest checkpoint is model/trial_may_fullarch/checkpoints/ngp_ep0011.pth
+[INFO] loaded model.
+[INFO] load at epoch 11, global step 60720
+[INFO] loaded optimizer.
+[INFO] loaded scheduler.
+[INFO] loaded scaler.
+==> Start Training Epoch 12, lr=0.000000 ...
+loss=15917871276871890501632.0000
+==> Finished Epoch 12.
+++> Evaluate at epoch 12 ...
+PSNR = 30.229890
+LPIPS (alex) = 0.090500
+LMD (fan) = 3.019961
+++> Evaluate epoch 12 Finished.
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0012
+==> Finished Test.
+==> Start Training Epoch 13, lr=0.000265 ...
+loss=28464817363659988992.0000
+==> Finished Epoch 13.
+++> Evaluate at epoch 13 ...
+PSNR = 28.654898
+LPIPS (alex) = 0.116737
+LMD (fan) = 3.274753
+++> Evaluate epoch 13 Finished.
+[EarlyStopping] No improvement for 1/8 epochs (best=0.014050, current=0.016967)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0013
+==> Finished Test.
+==> Start Training Epoch 14, lr=0.000191 ...
+loss=79095375368874816.0000
+==> Finished Epoch 14.
+++> Evaluate at epoch 14 ...
+PSNR = 27.399697
+LPIPS (alex) = 0.142493
+LMD (fan) = 3.402842
+++> Evaluate epoch 14 Finished.
+[EarlyStopping] No improvement for 2/8 epochs (best=0.014050, current=0.020017)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0014
+==> Finished Test.
+==> Start Training Epoch 15, lr=0.000127 ...
+loss=1872475615368658.0000
+==> Finished Epoch 15.
+++> Evaluate at epoch 15 ...
+PSNR = 26.616697
+LPIPS (alex) = 0.161217
+LMD (fan) = 3.469569
+++> Evaluate epoch 15 Finished.
+[EarlyStopping] No improvement for 3/8 epochs (best=0.014050, current=0.022179)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0015
+==> Finished Test.
+==> Start Training Epoch 16, lr=0.000074 ...
+loss=291321500014262.5625
+==> Finished Epoch 16.
+++> Evaluate at epoch 16 ...
+PSNR = 26.138979
+LPIPS (alex) = 0.175372
+LMD (fan) = 3.589600
+++> Evaluate epoch 16 Finished.
+[EarlyStopping] No improvement for 4/8 epochs (best=0.014050, current=0.023904)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0016
+==> Finished Test.
+==> Start Training Epoch 17, lr=0.000035 ...
+loss=123431905635593.2812
+==> Finished Epoch 17.
+++> Evaluate at epoch 17 ...
+PSNR = 25.739570
+LPIPS (alex) = 0.186468
+LMD (fan) = 3.692388
+++> Evaluate epoch 17 Finished.
+[EarlyStopping] No improvement for 5/8 epochs (best=0.014050, current=0.025206)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0017
+==> Finished Test.
+==> Start Training Epoch 18, lr=0.000010 ...
+loss=96096373292200.2500
+==> Finished Epoch 18.
+++> Evaluate at epoch 18 ...
+PSNR = 25.517493
+LPIPS (alex) = 0.193532
+LMD (fan) = 4.008653
+++> Evaluate epoch 18 Finished.
+[EarlyStopping] No improvement for 6/8 epochs (best=0.014050, current=0.026074)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0018
+==> Finished Test.
+==> Start Training Epoch 19, lr=0.000000 ...
+loss=92633579944139.3125
+==> Finished Epoch 19.
+++> Evaluate at epoch 19 ...
+PSNR = 25.510814
+LPIPS (alex) = 0.197352
+LMD (fan) = 3.709351
+++> Evaluate epoch 19 Finished.
+[EarlyStopping] No improvement for 7/8 epochs (best=0.014050, current=0.026306)
+==> Start Test, save results to model/trial_may_fullarch/epoch_reviews/ep0019
+==> Finished Test.
+++> Evaluate at epoch 19 ...
+PSNR = 25.753680
+LPIPS (alex) = 0.196526
+LMD (fan) = 3.860715
+++> Evaluate epoch 19 Finished.
+==> Start Test, save results to model/trial_may_fullarch/results
+==> Finished Test.

@@ -203,6 +203,12 @@ class NeRFNetwork(NeRFRenderer):
 
         self.in_dim = self.in_dim_xy + self.in_dim_yz + self.in_dim_xz
 
+        # Coarse->fine schedule: progressively unmask hash-grid levels.
+        # `cf_progress` is updated by the trainer each step (0.0 = coarsest only,
+        # 1.0 = all levels active). Defaults to 1.0 so test/inference are unaffected.
+        self.coarse_fine_warmup = int(getattr(self.opt, 'coarse_fine_warmup', 0))
+        self.register_buffer('cf_progress', torch.tensor(1.0), persistent=False)
+
         ## sigma network
         self.num_layers = 3
         self.hidden_dim = 64
@@ -292,14 +298,35 @@ class NeRFNetwork(NeRFRenderer):
         return xy, yz, xz
 
 
+    def _level_mask(self, feat: torch.Tensor) -> torch.Tensor:
+        """Apply coarse->fine level mask to a hash-grid feature tensor.
+
+        feat is laid out as [..., num_levels * level_dim] with level 0 first.
+        At cf_progress p in [0, 1] the first floor(p*L)+1 levels are active and
+        the next level fades in linearly across the remainder of the warmup.
+        """
+        if self.coarse_fine_warmup <= 0 or float(self.cf_progress) >= 1.0:
+            return feat
+        L = self.num_levels
+        p = float(self.cf_progress) * L
+        weights = torch.zeros(L, device=feat.device, dtype=feat.dtype)
+        full = int(p)
+        if full > 0:
+            weights[:full] = 1.0
+        if full < L:
+            weights[full] = p - full
+        # broadcast to [..., L * level_dim]
+        weights = weights.repeat_interleave(self.level_dim)
+        return feat * weights
+
     def encode_x(self, xyz, bound):
         # x: [N, 3], in [-bound, bound]
         N, M = xyz.shape
         xy, yz, xz = self.split_xyz(xyz)
-        feat_xy = self.encoder_xy(xy, bound=bound)
-        feat_yz = self.encoder_yz(yz, bound=bound)
-        feat_xz = self.encoder_xz(xz, bound=bound)
-        
+        feat_xy = self._level_mask(self.encoder_xy(xy, bound=bound))
+        feat_yz = self._level_mask(self.encoder_yz(yz, bound=bound))
+        feat_xz = self._level_mask(self.encoder_xz(xz, bound=bound))
+
         return torch.cat([feat_xy, feat_yz, feat_xz], dim=-1)
     
 

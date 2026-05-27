@@ -55,6 +55,37 @@ if __name__ == '__main__':
     parser.add_argument('--lr_schedule', type=str, default='cosine', choices=['exponential', 'cosine'], help="LR schedule type")
     parser.add_argument('--lr_warmup_steps', type=int, default=2000, help="warmup steps for cosine schedule")
 
+    ### Full architecture (PDF) — Stage A / B selector and motion-prior loading
+    parser.add_argument('--stage', type=str, default='b', choices=['a', 'b'],
+                        help="'b' = identity adaptation (default, single-ID training); "
+                             "'a' = identity-free pretraining on a multi-ID corpus")
+    parser.add_argument('--motion_prior', type=str, default='',
+                        help="path to a Stage-A motion_prior.pt to seed shared modules at the start of Stage B")
+
+    ### New training-loss weights (default 0 = disabled, no behavioral change)
+    parser.add_argument('--lambda_dssim', type=float, default=0.0, help="weight for D-SSIM loss (patch_size > 1 only)")
+    parser.add_argument('--lambda_lipsync', type=float, default=0.0, help="weight for SyncNet-style lip-sync loss (requires --lipsync_ckpt)")
+    parser.add_argument('--lipsync_ckpt', type=str, default='', help="path to a SyncNet checkpoint; lip-sync loss is no-op without it")
+    parser.add_argument('--lambda_geom', type=float, default=0.0, help="weight for finite-difference Eikonal density regularizer")
+    parser.add_argument('--lambda_embsmooth', type=float, default=0.0, help="weight for audio embedding smoothness loss")
+    parser.add_argument('--lambda_stab', type=float, default=0.0, help="weight for head-pose stability loss (only meaningful with --train_camera)")
+    parser.add_argument('--lambda_disentangle', type=float, default=0.0, help="(Stage A) weight for negative-contrast disentangle loss")
+
+    ### New architecture toggles (off by default; phase-2c wiring)
+    parser.add_argument('--use_mouth_branch', action='store_true', help="enable separate mouth branch (Phase 2; not yet wired)")
+    parser.add_argument('--use_deformation_mlp', action='store_true', help="enable deformation MLP (Phase 2; not yet wired)")
+    parser.add_argument('--coarse_fine_warmup', type=int, default=0, help="iters over which higher hash-grid levels are unmasked; 0 = disabled")
+
+    ### Optional control tokens at inference (no-op when zero embedding)
+    parser.add_argument('--blink_token', type=float, default=0.0, help="optional blink intensity at inference [0..1]")
+    parser.add_argument('--brow_token', type=float, default=0.0, help="optional brow movement intensity at inference [0..1]")
+    parser.add_argument('--emotion_token', type=int, default=-1, help="optional emotion class id at inference; -1 disables")
+    parser.add_argument('--style_token', type=int, default=-1, help="optional style class id at inference; -1 disables")
+
+    ### Optional postprocessing
+    parser.add_argument('--sr', action='store_true', help="apply optional super-resolution at inference (requires GFPGAN)")
+    parser.add_argument('--seam_feather', type=int, default=0, help="seam feather radius for portrait composition; 0 disables")
+
     ### early stopping
     parser.add_argument('--early_stop', action='store_true', help="enable early stopping")
     parser.add_argument('--early_stop_patience', type=int, default=10, help="early stopping patience (epochs)")
@@ -161,7 +192,25 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    if opt.stage == 'a':
+        raise NotImplementedError(
+            "Stage A (identity-free pretraining) is not yet wired in main.py. "
+            "Phase 3 will add scripts/pretrain_stage_a.py; for now run with --stage b."
+        )
+
     model = NeRFNetwork(opt)
+
+    # Optionally seed the shared motion-prior submodules from a Stage A checkpoint.
+    # We use strict=False because Stage A only ships the shared weights, not the
+    # per-identity canonical fields.
+    if opt.motion_prior:
+        if not os.path.exists(opt.motion_prior):
+            raise FileNotFoundError(f"--motion_prior path does not exist: {opt.motion_prior}")
+        prior_state = torch.load(opt.motion_prior, map_location='cpu')
+        prior_dict = prior_state.get('model', prior_state)
+        missing_keys, unexpected_keys = model.load_state_dict(prior_dict, strict=False)
+        print(f"[INFO] Loaded motion prior from {opt.motion_prior}; "
+              f"missing={len(missing_keys)} unexpected={len(unexpected_keys)}")
 
     # manually load state dict for head
     if opt.torso and opt.head_ckpt != '':

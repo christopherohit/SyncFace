@@ -11,7 +11,7 @@ import torch.optim as optim
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from nerf_triplane.temporal_loss import TemporalConsistencyLoss
+from nerf_triplane.losses import TemporalConsistencyLoss
 
 
 class TestTemporalConsistencyLoss(unittest.TestCase):

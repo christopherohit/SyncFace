@@ -1,0 +1,41 @@
+{
+  "log_path": "/home/nhanhuynh2/code/self-research/Syncfacev2/model/trial_may_fullarch/log_ngp.txt",
+  "csv_path": "/home/nhanhuynh2/code/self-research/Syncfacev2/model/trial_may_fullarch/eval_metrics.csv",
+  "selected_split": "val",
+  "best_per_metric": {
+    "val_loss": {
+      "metric": "val_loss",
+      "mode": "min",
+      "value": 0.01128957,
+      "epoch": 10,
+      "checkpoint": "model/trial_may_fullarch/checkpoints/ngp_ep0010.pth"
+    },
+    "PSNR": {
+      "metric": "PSNR",
+      "mode": "max",
+      "value": 32.28974245,
+      "epoch": 10,
+      "checkpoint": "model/trial_may_fullarch/checkpoints/ngp_ep0010.pth"
+    },
+    "LPIPS_alex": {
+      "metric": "LPIPS_alex",
+      "mode": "min",
+      "value": 0.07421534,
+      "epoch": 11,
+      "checkpoint": "model/trial_may_fullarch/checkpoints/ngp_ep0011.pth"
+    },
+    "LMD_fan": {
+      "metric": "LMD_fan",
+      "mode": "min",
+      "value": 2.93901189,
+      "epoch": 10,
+      "checkpoint": "model/trial_may_fullarch/checkpoints/ngp_ep0010.pth"
+    }
+  },
+  "balanced": {
+    "score": 0.9995810959843037,
+    "epoch": 10,
+    "checkpoint": "model/trial_may_fullarch/checkpoints/ngp_ep0010.pth",
+    "metric_count": 4
+  }
+}

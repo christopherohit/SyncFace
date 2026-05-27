@@ -1,0 +1,11 @@
+log: /home/nhanhuynh2/code/self-research/SyncTalk/model/trial_may2/log_ngp.txt
+csv: /home/nhanhuynh2/code/self-research/SyncTalk/model/trial_may2/eval_metrics.csv
+split: val
+
+Best checkpoint per metric:
+- val_loss (min): epoch=7 value=0.010932 ckpt=model/trial_may2/checkpoints/ngp_ep0007.pth
+- PSNR (max): epoch=7 value=32.406451 ckpt=model/trial_may2/checkpoints/ngp_ep0007.pth
+- LPIPS_alex (min): epoch=19 value=0.038108 ckpt=model/trial_may2/checkpoints/ngp_ep0019.pth
+- LMD_fan (min): epoch=18 value=2.911387 ckpt=model/trial_may2/checkpoints/ngp_ep0018.pth
+
+Balanced checkpoint: epoch=18 score=0.933900 ckpt=model/trial_may2/checkpoints/ngp_ep0018.pth
